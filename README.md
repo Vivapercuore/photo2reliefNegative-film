@@ -2,9 +2,7 @@
 
 官方使用的 lithophanemaker 生成分辨率太低
 
-
 为生成透光浮雕负片提供免费方案，为大家节约18美元
-
 
 
 由于makerworld lab中的参数化生成不支持读取文件，所以以这种形式提供
@@ -30,7 +28,9 @@
     - 请不要调整maxLength，这个参数暂时不能正确生效
     - 其他参数不必太在意，请在bambu studio 中调整实物尺寸
     - 保存文件
-  - 在 控制台/cmd/powershell 对应目录中执行 node image.js
+  - 在 控制台/cmd/powershell 对应目录中执行
+      npm i
+      node image.js
   - 在OpenSCAD中，ctrl+O 打开wb-phtot.scad
     - 按键 F5 进行预览（这一步可以完全跳过）
     - 按键 F6 生成模型
