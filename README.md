@@ -15,7 +15,7 @@ openScad:  下载地址    https://openscad.org/
 nodejs    下载地址    https://nodejs.org/zh-cn
 - 初步处理图片
   - 程序可以处理彩色照片，但生成的负片实物只会是负片，所以推荐转换为黑白查看预览效果，程序不提供预览功能
-  - 处理照片尺寸，过大的像素尺寸可能会导致node内存超过限制而失败，建议长边不要超过4000像素
+  - 处理照片尺寸，过大的像素尺寸可能会导致node内存超过限制而失败，建议长边不要超过2000像素
   - 处理照片格式，暂时只支持png格式,保存为png，你可以在 https://jpg2png.com/zh/ 进行格式转换（或其他方式）
 - 下载zip附件包 或从github获取  https://github.com/Vivapercuore/photo2reliefNegative-film/blob/main/README.md 
   - 将你自己的照片放置在目录中，与示例图片同级
