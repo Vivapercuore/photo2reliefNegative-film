@@ -151,7 +151,7 @@ function toDatString(lightArray) {
 //添加边框
 function generateBorder(deepMap) {
   if (!addBorder) {
-    return;
+    return deepMap;
   }
   const BorderDeep = (Number(maxPrintDeep) + borderHeightExtra)
     .toFixed(2)
