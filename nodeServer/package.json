@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "images": "^3.2.4",
+    "pngjs": "^7.0.0"
+  }
+}
