@@ -311,47 +311,49 @@ function Config() {
             />
           </div>
         </List.Item>
+        {AddBorder ? (
+          <>
+            <List.Item>
+              <div className="title">边框宽度(mm)</div>
+              <div className="describe">这个不用解释吧</div>
+              <div className="content">
+                <InputNumber
+                  style={{ margin: '10px 24px 10px 0' }}
+                  size="large"
+                  mode="button"
+                  max={10}
+                  min={0.1}
+                  step={0.1}
+                  precision={1}
+                  value={BorderWidth}
+                  onChange={(value) => {
+                    setBorderWidth(value);
+                  }}
+                />
+              </div>
+            </List.Item>
 
-        <List.Item>
-          <div className="title">边框宽度(mm)</div>
-          <div className="describe">这个不用解释吧</div>
-          <div className="content">
-            <InputNumber
-              style={{ margin: '10px 24px 10px 0' }}
-              size="large"
-              mode="button"
-              max={10}
-              min={0.1}
-              step={0.1}
-              precision={1}
-              value={BorderWidth}
-              onChange={(value) => {
-                setBorderWidth(value);
-              }}
-            />
-          </div>
-        </List.Item>
-
-        <List.Item>
-          <div className="title">边框附加高度(mm)</div>
-          <div className="describe">边框比最大厚度更厚x mm</div>
-          <div className="content">
-            <InputNumber
-              style={{ margin: '10px 24px 10px 0' }}
-              size="large"
-              mode="button"
-              max={10}
-              min={0}
-              step={0.1}
-              precision={0}
-              value={BorderHeightExtra}
-              onChange={(value) => {
-                setBorderHeightExtra(value);
-              }}
-            />
-          </div>
-        </List.Item>
-
+            <List.Item>
+              <div className="title">边框附加高度(mm)</div>
+              <div className="describe">边框比最大厚度更厚x mm</div>
+              <div className="content">
+                <InputNumber
+                  style={{ margin: '10px 24px 10px 0' }}
+                  size="large"
+                  mode="button"
+                  max={10}
+                  min={0}
+                  step={0.1}
+                  precision={0}
+                  value={BorderHeightExtra}
+                  onChange={(value) => {
+                    setBorderHeightExtra(value);
+                  }}
+                />
+              </div>
+            </List.Item>
+          </>
+        ) : null}
         <List.Item>
           <div className="title">选择图像</div>
           <div className="describe">上传图片文件，支持jpg/png/jpeg</div>
