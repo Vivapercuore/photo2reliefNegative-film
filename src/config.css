@@ -8,12 +8,21 @@
   background-color: #282c34;
 }
 .title {
-  font-size: 2vmin;
+  font-size: 20px;
   color: #fff;
 }
 .describe {
-  font-size: 1.5vmin;
+  font-size: 15px;
   color: #cfcfcf;
+}
+.content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 10px;
+}
+.previewImage {
+  width: 100%;
 }
 .bottom {
   margin-top: 10vh;
