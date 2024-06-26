@@ -1,12 +1,13 @@
 /*
  * @Author: error: error: git config user.name & please set dead value or install git && error: git config user.email & please set dead value or install git & please set dead value or install git
  * @Date: 2024-06-26 01:13:50
- * @LastEditors: error: error: git config user.name & please set dead value or install git && error: git config user.email & please set dead value or install git & please set dead value or install git
- * @LastEditTime: 2024-06-26 01:37:30
+ * @LastEditors: chenguofeng chenguofeng@bytedance.com
+ * @LastEditTime: 2024-06-26 21:41:45
  * @FilePath: \photo2reliefNegativeFilm\src\image2DataDeep\image2DataDeep.ts
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
 import { Message } from '@arco-design/web-react';
+import fileDownload from'js-file-download';
 
 interface Config {
   BaseDeep: number;
@@ -160,7 +161,9 @@ export async function getDataDeep(
 
   //转换为深度图
   function toDataDeepMap(lightArray: DeepMap) {
-    return lightArray.map((line) => line.map((i) => getDeep(i))); // .reverse();
+    return lightArray.map((line) => line.map((i) => getDeep(i)))
+    //深度图生成会是倒着的，在这里正回来
+     .reverse();
   }
 
   //转换为深度图
@@ -243,26 +246,28 @@ scale([${1 / Quality}, ${1 / Quality}, 1])
 }
 
 export function downloadFile(file: string, fileName: string): void {
+  console.log('downloadFile',fileName)
+  fileDownload(file, fileName)
   //   const blob = new Blob([file]);
-  const downloadFile = new File([file], fileName, { type: 'text/plain' });
+  // const downloadFile = new File([file], fileName, { type: 'text/plain' });
 
-  // 定义触发事件的DOM
-  var aLink = document.createElement('a');
-  // 判定平台
-  var isMac = navigator.userAgent.indexOf('Mac OS') > -1;
-  // 定义事件对象
-  var evt = document.createEvent(isMac ? 'MouseEvents' : 'HTMLEvents');
-  // 初始化事件
-  // evt.initEvent("click", false, false);
-  ((evt as any)[isMac ? 'initMouseEvent' : 'initEvent'] as any)(
-    'click',
-    false,
-    false
-  );
-  // 定义下载文件名称
-  aLink.download = fileName;
-  // 根据上面定义的 BLOB 对象创建文件 dataURL
-  aLink.href = URL.createObjectURL(downloadFile);
-  // 触发事件下载
-  aLink.dispatchEvent(evt);
+  // // 定义触发事件的DOM
+  // var aLink = document.createElement('a');
+  // // 判定平台
+  // var isMac = navigator.userAgent.indexOf('Mac OS') > -1;
+  // // 定义事件对象
+  // var evt = document.createEvent(isMac ? 'MouseEvents' : 'HTMLEvents');
+  // // 初始化事件
+  // // evt.initEvent("click", false, false);
+  // ((evt as any)[isMac ? 'initMouseEvent' : 'initEvent'] as any)(
+  //   'click',
+  //   false,
+  //   false
+  // );
+  // // 定义下载文件名称
+  // aLink.download = fileName;
+  // // 根据上面定义的 BLOB 对象创建文件 dataURL
+  // aLink.href = URL.createObjectURL(downloadFile);
+  // // 触发事件下载
+  // aLink.dispatchEvent(evt);
 }
