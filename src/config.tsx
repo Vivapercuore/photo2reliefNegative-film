@@ -277,11 +277,14 @@ function Config() {
         </List.Item>
 
         <List.Item>
-          <div className="title">精细度</div>
+          <div className="title">精细度(整数)</div>
           <div className="describe">
             每mm有多少个像素,和打印机的xy分辨率有关
           </div>
-          <div className="describe">建议A1/P1/X1 设置分别为: 2/4/5</div>
+          <div className="describe">
+            建议A1/P1/X1 设置分别为: 4/8/10
+            ,不建议过高,和打印机的,质量-精度-分辨率,有关
+          </div>
           <div className="describe">
             增加模型精细程度，会导致OpenScad生成Stl的时间和切片时间大幅上升
           </div>
@@ -290,7 +293,7 @@ function Config() {
               style={{ margin: '10px 24px 10px 0' }}
               size="large"
               mode="button"
-              max={10}
+              max={100}
               min={1}
               step={1}
               precision={0}
