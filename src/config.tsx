@@ -2,7 +2,7 @@
  * @Author: error: error: git config user.name & please set dead value or install git && error: git config user.email & please set dead value or install git & please set dead value or install git
  * @Date: 2024-06-25 22:47:01
  * @LastEditors: chenguofeng chenguofeng@bytedance.com
- * @LastEditTime: 2024-06-26 22:30:04
+ * @LastEditTime: 2024-06-26 22:54:24
  * @FilePath: \photo2reliefNegativeFilm\src\config.tsx
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -150,6 +150,36 @@ function Config() {
         size={'large'}
         header="填写参数生成数据文件"
       >
+        
+        <List.Item>
+          <div className="title">选择图像</div>
+          <div className="describe">上传图片文件，支持jpg/png/jpeg</div>
+          <div className="">
+            <Upload
+              style={{ width: '100%' }}
+              drag
+              // multiple
+              accept="image/*"
+              listType="text"
+              limit={1}
+              onChange={(e) => {
+                fileRequest(e[0]);
+                e[0].percent = 100;
+                e[0].status = 'done';
+              }}
+              tip="仅支持图片"
+            />
+            {ImageUrlData ? (
+              <div>
+                <div className="title">预览图</div>
+                <div className="describe">并非效果图</div>
+                {/* eslint-disable-next-line jsx-a11y/alt-text */}
+                <img className="previewImage" src={ImageUrlData} />
+              </div>
+            ) : null}
+          </div>
+        </List.Item>
+        
         <List.Item>
           <div className="title">使用哪种预设</div>
           <div className="describe">
@@ -231,6 +261,56 @@ function Config() {
             />
           </div>
         </List.Item>
+
+{/* 
+
+1寸
+1*1.5
+2.5cm*3.5cm
+证件照
+
+2寸
+1.5*2
+3.5cm*5.0cm
+标准2寸照片
+
+
+5寸/3R
+5*3.5
+12.7cm*8.9cm
+最常见的照片大小
+
+
+6寸/4R
+6*4
+15.2cm*10.2cm
+国际上比较通用的照片大小
+
+
+7寸/5R
+7*5
+17.8cm*12.7cm
+放大
+
+
+8寸
+6*8
+15.2cm*20.3cm
+大概是A5大小
+
+
+小12寸
+8*12
+20.3cm*30.5cm
+大概是A4大小
+
+
+12寸
+10*12
+25.4cm*30.5cm
+A4打印纸是21*29.7厘米
+
+*/}
 
         <List.Item>
           <div className="title">成像区域长边长度(mm) </div>
@@ -361,34 +441,6 @@ function Config() {
             </List.Item>
           </>
         ) : null}
-        <List.Item>
-          <div className="title">选择图像</div>
-          <div className="describe">上传图片文件，支持jpg/png/jpeg</div>
-          <div className="">
-            <Upload
-              style={{ width: '100%' }}
-              drag
-              // multiple
-              accept="image/*"
-              listType="text"
-              limit={1}
-              onChange={(e) => {
-                fileRequest(e[0]);
-                e[0].percent = 100;
-                e[0].status = 'done';
-              }}
-              tip="仅支持图片"
-            />
-            {ImageUrlData ? (
-              <div>
-                <div className="title">预览图</div>
-                <div className="describe">并非效果图</div>
-                {/* eslint-disable-next-line jsx-a11y/alt-text */}
-                <img className="previewImage" src={ImageUrlData} />
-              </div>
-            ) : null}
-          </div>
-        </List.Item>
 
         <List.Item>
           <div className="title">生成dat数据</div>
