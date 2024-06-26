@@ -280,7 +280,7 @@ function Config() {
           <div className="title">精细度(整数)</div>
           <div className="describe">
             每mm有多少个像素,和打印机的xy分辨率有关
-          </div>
+          </div> 
           <div className="describe">
             建议A1/P1/X1 设置分别为: 4/8/10
             ,不建议过高,和打印机的,质量-精度-分辨率,有关
