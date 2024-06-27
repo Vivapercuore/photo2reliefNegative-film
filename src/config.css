@@ -23,6 +23,8 @@
 }
 .previewImage {
   width: 100%;
+  max-height: 80vh;
+  object-fit: contain;
 }
 .bottom {
   margin-top: 10vh;

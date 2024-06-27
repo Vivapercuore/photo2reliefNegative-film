@@ -7,7 +7,7 @@
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
 import { Message } from '@arco-design/web-react';
-import fileDownload from'js-file-download';
+import fileDownload from 'js-file-download';
 
 interface Config {
   BaseDeep: number;
@@ -17,7 +17,7 @@ interface Config {
   Quality: number;
   AddBorder: boolean;
   BorderWidth: number;
-  BorderHeightExtra: number;
+  BorderHeight: number;
 }
 
 export async function getDataDeep(
@@ -35,7 +35,7 @@ export async function getDataDeep(
     Quality,
     AddBorder,
     BorderWidth,
-    BorderHeightExtra,
+    BorderHeight,
   } = config;
   setProgressInfo('参数设置');
   setProgress(1);
@@ -123,9 +123,7 @@ export async function getDataDeep(
     if (!AddBorder) {
       return deepMap;
     }
-    const BorderDeep = (Number(maxPrintDeep) + BorderHeightExtra)
-      .toFixed(2)
-      .toString();
+    const BorderDeep = BorderHeight.toFixed(2).toString();
     const boderSize = BorderWidth * 10;
     const Linelength = deepMap[0].length + boderSize * 2;
     deepMap.map((line) => {
@@ -161,9 +159,12 @@ export async function getDataDeep(
 
   //转换为深度图
   function toDataDeepMap(lightArray: DeepMap) {
-    return lightArray.map((line) => line.map((i) => getDeep(i)))
-    //深度图生成会是倒着的，在这里正回来
-     .reverse();
+    return (
+      lightArray
+        .map((line) => line.map((i) => getDeep(i)))
+        //深度图生成会是倒着的，在这里正回来
+        .reverse()
+    );
   }
 
   //转换为深度图
@@ -246,8 +247,8 @@ scale([${1 / Quality}, ${1 / Quality}, 1])
 }
 
 export function downloadFile(file: string, fileName: string): void {
-  console.log('downloadFile',fileName)
-  fileDownload(file, fileName)
+  console.log('downloadFile', fileName);
+  fileDownload(file, fileName);
   //   const blob = new Blob([file]);
   // const downloadFile = new File([file], fileName, { type: 'text/plain' });
 

@@ -14,7 +14,7 @@ import {
   InputNumber,
   Switch,
   Upload,
-  Message,
+  // Message,
   Button,
   Progress,
 } from '@arco-design/web-react';
@@ -53,9 +53,17 @@ function Config() {
   const [Quality, setQuality] = useState(4);
   const [AddBorder, setAddBorder] = useState(true);
   const [BorderWidth, setBorderWidth] = useState(2);
-  const [BorderHeightExtra, setBorderHeightExtra] = useState(1);
+  const [BorderHeight, setBorderHeight] = useState(3);
 
   const [ImageUrlData, setImageUrlData] = useState<string>('');
+  const [ImageFileSize, setImageFileSize] = useState({
+    width: 0,
+    height: 0,
+  });
+  const [ImagePrintSize, setImagePrintSize] = useState({
+    width: '0',
+    height: '0',
+  });
   const [ImagePreview, setImagePreview] = useState<string>('');
   const fileRequest = (file: any) => {
     const reader = new FileReader();
@@ -68,9 +76,33 @@ function Config() {
         setImageUrlData(fileDataUrl);
         file.percent = 100;
         file.status = 'done';
+        const img = new Image();
+        img.onload = function () {
+          const fileWidth = img.width;
+          const fileHeight = img.height;
+          setImageFileSize({
+            width: fileWidth,
+            height: fileHeight,
+          });
+        };
+        img.src = fileDataUrl;
       };
     }
   };
+
+  useEffect(() => {
+    console.error(ImageFileSize);
+    const scala = Math.min(
+      MaxLength / ImageFileSize.height,
+      MaxLength / ImageFileSize.width
+    );
+    const PrintWidth = (ImageFileSize.width * scala).toFixed(2);
+    const PrintHeight = (ImageFileSize.height * scala).toFixed(2);
+    setImagePrintSize({
+      width: PrintWidth,
+      height: PrintHeight,
+    });
+  }, [ImageFileSize, MaxLength]);
 
   const [ParamOnReady, setParamOnReady] = useState(false);
   useEffect(() => {
@@ -79,9 +111,7 @@ function Config() {
     ].every((i: number) => i >= 0);
     let borderReady = !AddBorder;
     if (AddBorder) {
-      borderReady = [BorderWidth && BorderHeightExtra].every(
-        (i: number) => i >= 0
-      );
+      borderReady = [BorderWidth && BorderHeight].every((i: number) => i >= 0);
     }
     setParamOnReady(Boolean(numerReady && borderReady && ImageUrlData));
 
@@ -97,7 +127,7 @@ function Config() {
     Quality,
     AddBorder,
     BorderWidth,
-    BorderHeightExtra,
+    BorderHeight,
     ImageUrlData,
   ]);
 
@@ -125,7 +155,7 @@ function Config() {
         Quality,
         AddBorder,
         BorderWidth,
-        BorderHeightExtra,
+        BorderHeight,
       },
       setProgress,
       setProgressInfo,
@@ -150,217 +180,6 @@ function Config() {
         size={'large'}
         header="填写参数生成数据文件"
       >
-        <List.Item>
-          <div className="title">使用哪种预设</div>
-          <div className="describe">
-            使用预设，直接下载对应3mf,替换模型后切片打印
-          </div>
-          <div className="content">
-            <RadioGroup
-              type="button"
-              name="lang"
-              defaultValue={PresetMode.default}
-              value={Preset}
-              style={{ marginRight: 20, marginBottom: 20 }}
-              onChange={(e: keyof typeof PresetMode) => {
-                setPreset(PresetMode[e]);
-              }}
-            >
-              <Radio value={PresetMode.default}>0.4喷嘴标准配置</Radio>
-              <Radio value={PresetMode.precision}>0.2喷嘴高细腻配置</Radio>
-              <Radio value={PresetMode.custom}>自定义配置</Radio>
-            </RadioGroup>
-          </div>
-        </List.Item>
-
-        <List.Item>
-          <div className="title">首层层高(mm)</div>
-          <div className="describe">
-            打印机中的设置必须和此处严格一致，设置这里，再修改打印机
-          </div>
-          <div className="content">
-            {Preset !== PresetMode.custom ? (
-              <div style={{ width: 300, marginRight: 10 }}>
-                使用3mf预设,不需要调整
-              </div>
-            ) : null}
-
-            <InputNumber
-              style={{ margin: '10px 24px 10px 0' }}
-              size="large"
-              mode="button"
-              suffix="mm"
-              disabled={Preset !== PresetMode.custom}
-              max={2}
-              min={0.04}
-              step={0.04}
-              precision={2}
-              value={BaseDeep}
-              onChange={(value) => {
-                setBaseDeep(value);
-              }}
-            />
-          </div>
-        </List.Item>
-
-        <List.Item>
-          <div className="title">单层层高(mm) </div>
-          <div className="describe">
-            打印机中的设置必须和此处严格一致，设置这里，再修改打印机
-          </div>
-          <div className="content">
-            {Preset !== PresetMode.custom ? (
-              <div style={{ width: 300, marginRight: 10 }}>
-                使用3mf预设,不需要调整
-              </div>
-            ) : null}
-            <InputNumber
-              style={{ margin: '10px 24px 10px 0' }}
-              size="large"
-              mode="button"
-              suffix="mm"
-              disabled={Preset !== PresetMode.custom}
-              max={1}
-              min={0.04}
-              step={0.02}
-              precision={2}
-              value={LayerDeep}
-              onChange={(value) => {
-                setLayerDeep(value);
-              }}
-            />
-          </div>
-        </List.Item>
-
-        <List.Item>
-          <div className="title">成像区域长边长度(mm) </div>
-          <div className="describe">不含边框，短边会自动缩放适应</div>
-          <div className="content">
-            <InputNumber
-              style={{ margin: '10px 24px 10px 0' }}
-              size="large"
-              mode="button"
-              suffix="mm"
-              max={1000}
-              min={1}
-              step={1}
-              precision={1}
-              value={MaxLength}
-              onChange={(value) => {
-                setMaxLength(value);
-              }}
-            />
-          </div>
-        </List.Item>
-
-        <List.Item>
-          <div className="title">成像区域最大厚度(mm)</div>
-          <div className="describe">
-            包括首层，不含边框，请根据自己的材料透光性设置
-          </div>
-          <div className="content">
-            <InputNumber
-              style={{ margin: '10px 24px 10px 0' }}
-              size="large"
-              mode="button"
-              suffix="mm"
-              max={20}
-              min={1}
-              step={0.5}
-              precision={1}
-              value={MaxDeep}
-              onChange={(value) => {
-                setMaxDeep(value);
-              }}
-            />
-          </div>
-        </List.Item>
-
-        <List.Item>
-          <div className="title">精细度(整数)</div>
-          <div className="describe">
-            每mm有多少个像素,和打印机的xy分辨率有关
-          </div> 
-          <div className="describe">
-            建议A1/P1/X1 设置分别为: 4/8/10
-            ,不建议过高,和打印机的,质量-精度-分辨率,有关
-          </div>
-          <div className="describe">
-            增加模型精细程度，会导致OpenScad生成Stl的时间和切片时间大幅上升
-          </div>
-          <div className="content">
-            <InputNumber
-              style={{ margin: '10px 24px 10px 0' }}
-              size="large"
-              mode="button"
-              max={100}
-              min={1}
-              step={1}
-              precision={0}
-              value={Quality}
-              onChange={(value) => {
-                setQuality(value);
-              }}
-            />
-          </div>
-        </List.Item>
-
-        <List.Item>
-          <div className="title">是否开启边框</div>
-          <div className="describe">在边缘生成一圈边框</div>
-          <div className="content">
-            <Switch
-              type="round"
-              checked={AddBorder}
-              onChange={(value) => {
-                setAddBorder(value);
-              }}
-            />
-          </div>
-        </List.Item>
-        {AddBorder ? (
-          <>
-            <List.Item>
-              <div className="title">边框宽度(mm)</div>
-              <div className="describe">这个不用解释吧</div>
-              <div className="content">
-                <InputNumber
-                  style={{ margin: '10px 24px 10px 0' }}
-                  size="large"
-                  mode="button"
-                  max={10}
-                  min={0.1}
-                  step={0.1}
-                  precision={1}
-                  value={BorderWidth}
-                  onChange={(value) => {
-                    setBorderWidth(value);
-                  }}
-                />
-              </div>
-            </List.Item>
-
-            <List.Item>
-              <div className="title">边框附加高度(mm)</div>
-              <div className="describe">边框比最大厚度更厚x mm</div>
-              <div className="content">
-                <InputNumber
-                  style={{ margin: '10px 24px 10px 0' }}
-                  size="large"
-                  mode="button"
-                  max={10}
-                  min={0}
-                  step={0.1}
-                  precision={0}
-                  value={BorderHeightExtra}
-                  onChange={(value) => {
-                    setBorderHeightExtra(value);
-                  }}
-                />
-              </div>
-            </List.Item>
-          </>
-        ) : null}
         <List.Item>
           <div className="title">选择图像</div>
           <div className="describe">上传图片文件，支持jpg/png/jpeg</div>
@@ -390,72 +209,313 @@ function Config() {
           </div>
         </List.Item>
 
-        <List.Item>
-          <div className="title">生成dat数据</div>
-          <div className="describe">检查配置无误后开始生成</div>
-          <div className="content">
-            <Button
-              style={{ width: '100%', height: '50px' }}
-              disabled={!ParamOnReady}
-              type="primary"
-              onClick={generateDataDeep}
-            >
-              生成dat数据
-            </Button>
-          </div>
-        </List.Item>
+        {ImageUrlData ? (
+          <>
+            <List.Item>
+              <div className="title">使用哪种预设</div>
+              <div className="describe">
+                使用预设，直接下载对应3mf,替换模型后切片打印
+              </div>
+              <div className="content">
+                <RadioGroup
+                  type="button"
+                  name="lang"
+                  defaultValue={PresetMode.default}
+                  value={Preset}
+                  style={{ marginRight: 20, marginBottom: 20 }}
+                  onChange={(e: keyof typeof PresetMode) => {
+                    setPreset(PresetMode[e]);
+                  }}
+                >
+                  <Radio value={PresetMode.default}>0.4喷嘴标准配置</Radio>
+                  <Radio value={PresetMode.precision}>0.2喷嘴高细腻配置</Radio>
+                  <Radio value={PresetMode.custom}>自定义配置</Radio>
+                </RadioGroup>
+              </div>
+            </List.Item>
 
-        <List.Item>
-          <div className="title">生成进度</div>
-          <div className="describe">修改配置会清空数据缓存</div>
-          <div className="content">
-            <Progress
-              percent={ProgressData}
-              color="#5289e9"
-              formatText={() => ProgressText}
-              // style={{ marginBottom: 20 }}
-            />
-          </div>
-        </List.Item>
+            <List.Item>
+              <div className="title">首层层高(mm)</div>
+              <div className="describe">
+                打印机中的设置必须和此处严格一致，设置这里，再修改打印机
+              </div>
+              <div className="content">
+                {Preset !== PresetMode.custom ? (
+                  <div style={{ width: 300, marginRight: 10 }}>
+                    使用3mf预设,不需要调整
+                  </div>
+                ) : null}
 
-        <List.Item>
-          <div className="title">下载dat文件</div>
-          <div className="describe">每次生成后下载新的数据文件</div>
-          <div className="describe">
-            下载文件之前,记得吧旧文件删了,要不文件名多个(n),会读到旧文件上
-          </div>
-          <div className="content">
-            <Button
-              style={{ width: '100%', height: '50px' }}
-              disabled={!LoadingImage}
-              type="primary"
-              onClick={() => {
-                downloadFile(DataDeep, 'DataDeep.dat');
-              }}
-            >
-              下载dat文件
-            </Button>
-          </div>
-        </List.Item>
+                <InputNumber
+                  style={{ margin: '10px 24px 10px 0' }}
+                  size="large"
+                  mode="button"
+                  suffix="mm"
+                  disabled={Preset !== PresetMode.custom}
+                  max={2}
+                  min={0.04}
+                  step={0.04}
+                  precision={2}
+                  value={BaseDeep}
+                  onChange={(value) => {
+                    setBaseDeep(value);
+                  }}
+                />
+              </div>
+            </List.Item>
 
-        <List.Item>
-          <div className="title">下载scad文件</div>
-          <div className="describe">
-            修改精细度后需要下载新的scad，不修改精细度不需要更新
-          </div>
-          <div className="content">
-            <Button
-              style={{ width: '100%', height: '50px' }}
-              disabled={!LoadingImage}
-              type="primary"
-              onClick={() => {
-                downloadFile(ScadFile, 'photo2stl.scad');
-              }}
-            >
-              下载scad文件
-            </Button>
-          </div>
-        </List.Item>
+            <List.Item>
+              <div className="title">单层层高(mm) </div>
+              <div className="describe">
+                打印机中的设置必须和此处严格一致，设置这里，再修改打印机
+              </div>
+              <div className="content">
+                {Preset !== PresetMode.custom ? (
+                  <div style={{ width: 300, marginRight: 10 }}>
+                    使用3mf预设,不需要调整
+                  </div>
+                ) : null}
+                <InputNumber
+                  style={{ margin: '10px 24px 10px 0' }}
+                  size="large"
+                  mode="button"
+                  suffix="mm"
+                  disabled={Preset !== PresetMode.custom}
+                  max={1}
+                  min={0.04}
+                  step={0.02}
+                  precision={2}
+                  value={LayerDeep}
+                  onChange={(value) => {
+                    setLayerDeep(value);
+                  }}
+                />
+              </div>
+            </List.Item>
+
+            <List.Item>
+              <div className="title">成像区域长边长度(mm) </div>
+              <div className="describe">不含边框，短边会自动缩放适应</div>
+              <div className="content">
+                <InputNumber
+                  style={{ margin: '10px 24px 10px 0' }}
+                  size="large"
+                  mode="button"
+                  suffix="mm"
+                  max={1000}
+                  min={1}
+                  step={1}
+                  precision={1}
+                  value={MaxLength}
+                  onChange={(value) => {
+                    setMaxLength(value);
+                  }}
+                />
+              </div>
+              <div className="content">
+                目前图片尺寸 - 宽*高: {ImagePrintSize.width} mm *{' '}
+                {ImagePrintSize.height} mm
+              </div>
+              <div className="content">
+                目前成片尺寸 (包含边框) - 宽*高*厚:{' '}
+                {(Number(ImagePrintSize.width) + BorderWidth * 2).toFixed(2)} mm
+                * {(Number(ImagePrintSize.height) + BorderWidth * 2).toFixed(2)}{' '}
+                mm * {BorderHeight} mm
+              </div>
+            </List.Item>
+
+            <List.Item>
+              <div className="title">成像区域最大厚度(mm)</div>
+              <div className="describe">
+                包括首层，不含边框，请根据自己的材料透光性设置
+              </div>
+              <div className="content">
+                <InputNumber
+                  style={{ margin: '10px 24px 10px 0' }}
+                  size="large"
+                  mode="button"
+                  suffix="mm"
+                  max={20}
+                  min={1}
+                  step={0.5}
+                  precision={1}
+                  value={MaxDeep}
+                  onChange={(value) => {
+                    setMaxDeep(value);
+                  }}
+                />
+              </div>
+            </List.Item>
+
+            <List.Item>
+              <div className="title">精细度(整数)</div>
+              <div className="describe">
+                每mm有多少个像素,和打印机的xy分辨率有关
+              </div>
+              <div className="describe">
+                建议A1/P1/X1 设置分别为: 4/8/10
+                ,不建议过高,和打印机的,质量-精度-分辨率,有关
+              </div>
+              <div className="describe">
+                增加模型精细程度，会导致OpenScad生成Stl的时间和切片时间大幅上升
+              </div>
+              <div className="content">
+                <InputNumber
+                  style={{ margin: '10px 24px 10px 0' }}
+                  size="large"
+                  mode="button"
+                  max={100}
+                  min={1}
+                  step={1}
+                  precision={0}
+                  value={Quality}
+                  onChange={(value) => {
+                    setQuality(value);
+                  }}
+                />
+              </div>
+            </List.Item>
+
+            <List.Item>
+              <div className="title">是否开启边框</div>
+              <div className="describe">在边缘生成一圈边框</div>
+              <div className="content">
+                <Switch
+                  type="round"
+                  checked={AddBorder}
+                  onChange={(value) => {
+                    setAddBorder(value);
+                  }}
+                />
+              </div>
+            </List.Item>
+            {AddBorder ? (
+              <>
+                <List.Item>
+                  <div className="title">边框宽度(mm)</div>
+                  <div className="describe">这个不用解释吧</div>
+                  <div className="content">
+                    <InputNumber
+                      style={{ margin: '10px 24px 10px 0' }}
+                      size="large"
+                      mode="button"
+                      max={10}
+                      min={0.1}
+                      step={0.1}
+                      precision={1}
+                      value={BorderWidth}
+                      onChange={(value) => {
+                        setBorderWidth(value);
+                      }}
+                    />
+                  </div>
+                </List.Item>
+
+                <List.Item>
+                  <div className="title">边框高度(mm)</div>
+                  <div className="describe">
+                    你说多高就多高,建议比 成像区域最大厚度 要高
+                  </div>
+                  <div className="content">
+                    <InputNumber
+                      style={{ margin: '10px 24px 10px 0' }}
+                      size="large"
+                      mode="button"
+                      max={10}
+                      min={0}
+                      step={0.1}
+                      precision={0}
+                      value={BorderHeight}
+                      onChange={(value) => {
+                        setBorderHeight(value);
+                      }}
+                    />
+                  </div>
+                </List.Item>
+              </>
+            ) : null}
+
+            <List.Item>
+              <div className="title">生成dat数据</div>
+              <div className="describe">检查配置无误后开始生成</div>
+              <div className="content">
+                <Button
+                  style={{ width: '100%', height: '50px' }}
+                  disabled={!ParamOnReady}
+                  type="primary"
+                  onClick={generateDataDeep}
+                >
+                  生成dat数据
+                </Button>
+              </div>
+            </List.Item>
+
+            <List.Item>
+              <div className="title">生成进度</div>
+              <div className="describe">修改配置会清空数据缓存</div>
+              <div className="content">
+                <Progress
+                  percent={ProgressData}
+                  color="#5289e9"
+                  formatText={() => ProgressText}
+                  // style={{ marginBottom: 20 }}
+                />
+              </div>
+            </List.Item>
+
+            <List.Item>
+              <div className="title">下载dat文件</div>
+              <div className="describe">每次生成后下载新的数据文件</div>
+              <div className="describe">
+                下载文件之前,记得吧旧文件删了,要不文件名多个(n),会读到旧文件上
+              </div>
+              <div className="content">
+                <Button
+                  style={{ width: '100%', height: '50px' }}
+                  disabled={!LoadingImage}
+                  type="primary"
+                  onClick={() => {
+                    downloadFile(DataDeep, 'DataDeep.dat');
+                  }}
+                >
+                  下载dat文件
+                </Button>
+              </div>
+            </List.Item>
+
+            <List.Item>
+              <div className="title">下载scad文件</div>
+              <div className="describe">
+                修改精细度后需要下载新的scad，不修改精细度不需要更新
+              </div>
+              <div className="content">
+                <Button
+                  style={{ width: '100%', height: '50px' }}
+                  disabled={!LoadingImage}
+                  type="primary"
+                  onClick={() => {
+                    downloadFile(ScadFile, 'photo2stl.scad');
+                  }}
+                >
+                  下载scad文件
+                </Button>
+              </div>
+            </List.Item>
+
+            <List.Item style={{ display: 'none' }}>
+              <div className="title">预览效果图</div>
+              <div className="describe">仅供参考</div>
+              <div className="content">
+                {ImagePreview ? (
+                  <div>
+                    {/* eslint-disable-next-line jsx-a11y/alt-text */}
+                    <img className="previewImage" src={ImagePreview} />
+                  </div>
+                ) : null}
+              </div>
+            </List.Item>
+          </>
+        ) : null}
       </List>
 
       <div className="bottom"></div>
