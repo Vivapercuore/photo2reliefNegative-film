@@ -425,7 +425,7 @@ function Config() {
                 <List.Item>
                   <div className="title">边框高度(mm)</div>
                   <div className="describe">
-                    你说多高就多高,建议比 成像区域最大厚度 要高
+                    你说多高就多高,建议比 成像区域最大厚度:{MaxDeep} 要高
                   </div>
                   <div className="content">
                     <InputNumber
