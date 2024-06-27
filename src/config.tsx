@@ -17,6 +17,7 @@ import {
   // Message,
   Button,
   Progress,
+  Tag,
 } from '@arco-design/web-react';
 
 import {
@@ -235,6 +236,35 @@ function Config() {
             </List.Item>
 
             <List.Item>
+              <div className="title">单层层高(mm) </div>
+              <div className="describe">
+                打印机中的设置必须和此处严格一致，设置这里，再修改打印机
+              </div>
+              <div className="content">
+                {Preset !== PresetMode.custom ? (
+                  <div style={{ width: 300, marginRight: 10 }}>
+                    使用3mf预设,不需要调整
+                  </div>
+                ) : null}
+                <InputNumber
+                  style={{ margin: '10px 24px 10px 0' }}
+                  size="large"
+                  mode="button"
+                  suffix="mm"
+                  disabled={Preset !== PresetMode.custom}
+                  max={1}
+                  min={0.04}
+                  step={0.02}
+                  precision={2}
+                  value={LayerDeep}
+                  onChange={(value) => {
+                    setLayerDeep(value);
+                  }}
+                />
+              </div>
+            </List.Item>
+
+            <List.Item>
               <div className="title">首层层高(mm)</div>
               <div className="describe">
                 打印机中的设置必须和此处严格一致，设置这里，再修改打印机
@@ -265,37 +295,18 @@ function Config() {
             </List.Item>
 
             <List.Item>
-              <div className="title">单层层高(mm) </div>
-              <div className="describe">
-                打印机中的设置必须和此处严格一致，设置这里，再修改打印机
-              </div>
-              <div className="content">
-                {Preset !== PresetMode.custom ? (
-                  <div style={{ width: 300, marginRight: 10 }}>
-                    使用3mf预设,不需要调整
-                  </div>
-                ) : null}
-                <InputNumber
-                  style={{ margin: '10px 24px 10px 0' }}
-                  size="large"
-                  mode="button"
-                  suffix="mm"
-                  disabled={Preset !== PresetMode.custom}
-                  max={1}
-                  min={0.04}
-                  step={0.02}
-                  precision={2}
-                  value={LayerDeep}
-                  onChange={(value) => {
-                    setLayerDeep(value);
-                  }}
-                />
-              </div>
-            </List.Item>
-
-            <List.Item>
               <div className="title">成像区域长边长度(mm) </div>
               <div className="describe">不含边框，短边会自动缩放适应</div>
+              <div className="describe">
+                常见的照片尺寸参考(暂时还不能点):
+                <Tag className="sizeTag">大1寸/小2寸: 33mm * 48mm</Tag>
+                <Tag className="sizeTag">5寸/3R: 89mm * 127mm</Tag>
+                <Tag className="sizeTag">6寸/4R: 102mm * 152mm</Tag>
+                <Tag className="sizeTag">7寸/5R: 127mm * 178mm</Tag>
+                <Tag className="sizeTag">8寸: 152mm * 203mm</Tag>
+                <Tag className="sizeTag">小12寸(大约是A4): 203mm * 305mm</Tag>
+                <Tag className="sizeTag">12寸(比A4略宽): 254mm * 305mm</Tag>
+              </div>
               <div className="content">
                 <InputNumber
                   style={{ margin: '10px 24px 10px 0' }}
@@ -320,7 +331,7 @@ function Config() {
                 目前成片尺寸 (包含边框) - 宽*高*厚:{' '}
                 {(Number(ImagePrintSize.width) + BorderWidth * 2).toFixed(2)} mm
                 * {(Number(ImagePrintSize.height) + BorderWidth * 2).toFixed(2)}{' '}
-                mm * {BorderHeight} mm
+                mm * {Math.max(MaxDeep, BorderHeight)} mm
               </div>
             </List.Item>
 

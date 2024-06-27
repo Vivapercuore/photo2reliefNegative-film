@@ -26,6 +26,9 @@
   max-height: 80vh;
   object-fit: contain;
 }
+.sizeTag {
+  margin: 5px;
+}
 .bottom {
   margin-top: 10vh;
 }
