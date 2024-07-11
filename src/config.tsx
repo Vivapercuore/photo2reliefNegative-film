@@ -1,38 +1,79 @@
 /*
  * @Author: error: error: git config user.name & please set dead value or install git && error: git config user.email & please set dead value or install git & please set dead value or install git
  * @Date: 2024-06-25 22:47:01
- * @LastEditors: error: error: git config user.name & please set dead value or install git && error: git config user.email & please set dead value or install git & please set dead value or install git
- * @LastEditTime: 2024-06-26 02:18:08
+ * @LastEditors: chenguofeng chenguofeng@bytedance.com
+ * @LastEditTime: 2024-07-12 02:12:50
  * @FilePath: \photo2reliefNegativeFilm\src\config.tsx
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
-import React, { useState, useEffect } from 'react';
-import './config.css';
+import React, { useState, useEffect } from "react";
+import "./config.css";
 import {
   List,
   Radio,
   InputNumber,
   Switch,
   Upload,
-  // Message,
+  Message,
   Button,
   Progress,
   Tag,
-} from '@arco-design/web-react';
+} from "@arco-design/web-react";
 
 import {
   getDataDeep,
   getScad,
   downloadFile,
-} from './image2DataDeep/image2DataDeep';
+} from "./image2DataDeep/image2DataDeep";
+
+import { sendStl } from "./image2DataDeep/test/data2module"
 
 const RadioGroup = Radio.Group;
 
 enum PresetMode {
-  'default' = 'default',
-  'precision' = 'precision',
-  'custom' = 'custom',
+  "default" = "default",
+  "precision" = "precision",
+  "speed" = "speed",
+  "custom" = "custom",
 }
+
+const PhotoSizeMap = [
+  {
+    name: "大1寸/小2寸: 33mm * 48mm",
+    width: 33,
+    height: 48,
+  },
+  {
+    name: "5寸/3R: 89mm * 127mm",
+    width: 89,
+    height: 127,
+  },
+  {
+    name: "6寸/4R: 102mm * 152mm",
+    width: 102,
+    height: 152,
+  },
+  {
+    name: "7寸/5R: 127mm * 178mm",
+    width: 127,
+    height: 178,
+  },
+  {
+    name: "8寸: 152mm * 203mm",
+    width: 152,
+    height: 203,
+  },
+  {
+    name: "小12寸(大约是A4): 203mm * 305mm",
+    width: 203,
+    height: 305,
+  },
+  {
+    name: "12寸(比A4略宽): 254mm * 305mm",
+    width: 254,
+    height: 305,
+  },
+];
 
 function Config() {
   const [Preset, setPreset] = useState(PresetMode.default);
@@ -45,38 +86,42 @@ function Config() {
       setBaseDeep(0.08);
       setLayerDeep(0.04);
     }
+    if (Preset === PresetMode.speed) {
+      setBaseDeep(0.2);
+      setLayerDeep(0.2);
+    }
   }, [Preset]);
 
   const [BaseDeep, setBaseDeep] = useState(0.16);
   const [LayerDeep, setLayerDeep] = useState(0.08);
   const [MaxLength, setMaxLength] = useState(127);
   const [MaxDeep, setMaxDeep] = useState(2.6);
-  const [Quality, setQuality] = useState(4);
+  const [Quality, setQuality] = useState(5);
   const [AddBorder, setAddBorder] = useState(true);
   const [BorderWidth, setBorderWidth] = useState(2);
   const [BorderHeight, setBorderHeight] = useState(3);
 
-  const [ImageUrlData, setImageUrlData] = useState<string>('');
+  const [ImageUrlData, setImageUrlData] = useState<string>("");
   const [ImageFileSize, setImageFileSize] = useState({
     width: 0,
     height: 0,
   });
   const [ImagePrintSize, setImagePrintSize] = useState({
-    width: '0',
-    height: '0',
+    width: "0",
+    height: "0",
   });
-  const [ImagePreview, setImagePreview] = useState<string>('');
+  const [ImagePreview, setImagePreview] = useState<string>("");
   const fileRequest = (file: any) => {
     const reader = new FileReader();
     if (!file?.originFile) {
-      setImageUrlData('');
+      setImageUrlData("");
     } else {
       reader.readAsDataURL(file.originFile);
       reader.onload = (event) => {
         const fileDataUrl = event.target?.result as string;
         setImageUrlData(fileDataUrl);
         file.percent = 100;
-        file.status = 'done';
+        file.status = "done";
         const img = new Image();
         img.onload = function () {
           const fileWidth = img.width;
@@ -92,7 +137,6 @@ function Config() {
   };
 
   useEffect(() => {
-    console.error(ImageFileSize);
     const scala = Math.min(
       MaxLength / ImageFileSize.height,
       MaxLength / ImageFileSize.width
@@ -116,10 +160,10 @@ function Config() {
     }
     setParamOnReady(Boolean(numerReady && borderReady && ImageUrlData));
 
-    setDataDeep('');
-    setScadFile('');
+    setDataDeep("");
+    setScadFile("");
     setProgress(0);
-    setProgressInfo('');
+    setProgressInfo("");
   }, [
     BaseDeep,
     LayerDeep,
@@ -133,52 +177,79 @@ function Config() {
   ]);
 
   const [ProgressData, setProgress] = useState(0);
-  const [ProgressText, setProgressInfo] = useState('');
+  const [ProgressText, setProgressInfo] = useState("");
 
   // 生成中
   const [LoadingImage, setLoadingImage] = useState(false);
   // 深度图
-  const [DataDeep, setDataDeep] = useState('');
+  const [DataDeep, setDataDeep] = useState("");
   // scad
-  const [ScadFile, setScadFile] = useState('');
+  const [ScadFile, setScadFile] = useState("");
   useEffect(() => {
     setLoadingImage(Boolean(DataDeep) && Boolean(ScadFile));
   }, [DataDeep, ScadFile]);
 
   const generateDataDeep = async () => {
-    const dataDeepMapDat = await getDataDeep(
-      ImageUrlData,
-      {
-        BaseDeep,
-        LayerDeep,
-        MaxLength,
-        MaxDeep,
-        Quality,
-        AddBorder,
-        BorderWidth,
-        BorderHeight,
-      },
-      setProgress,
-      setProgressInfo,
-      setImagePreview
-    );
-    setProgressInfo('生成DataDeep文件');
-    setProgress(90);
-    setDataDeep(dataDeepMapDat);
-    setProgressInfo('生成Scad文件');
-    setProgress(95);
-    const dataScad = getScad(Quality);
-    setScadFile(dataScad);
-    setProgressInfo('成功');
-    setProgress(100);
+    try {
+      const dataDeepMapDat = await getDataDeep(
+        ImageUrlData,
+        {
+          BaseDeep,
+          LayerDeep,
+          MaxLength,
+          MaxDeep,
+          Quality,
+          AddBorder,
+          BorderWidth,
+          BorderHeight,
+        },
+        setProgress,
+        setProgressInfo,
+        setImagePreview
+      );
+      setProgressInfo("生成DataDeep文件");
+      setProgress(90);
+      setDataDeep(dataDeepMapDat);
+      setProgressInfo("生成Scad文件");
+      setProgress(95);
+      const dataScad = getScad(Quality);
+      setScadFile(dataScad);
+      setProgressInfo("成功");
+      setProgress(100);
+    } catch (error) {
+      Message.error(
+        `发生内部错误，请截图给作者处理：${JSON.stringify(error, null, 2)}`
+      );
+    }
   };
+
+  // 点击设置长边长度
+  const setPhotoSize = (i: { name: string; width: number; height: number }) => {
+    const longLine = Math.max(i.width, i.height);
+    setMaxLength(longLine);
+  };
+
+const testStl = () =>{
+  const blob =  sendStl() as any;
+  downloadFile(blob,'teststl.stl')
+}
 
   return (
     <div className="config">
       {/* <h3 className="header"></h3> */}
+      
+      <Button
+                  style={{ width: "100%", height: "50px" }}
+                  type="primary"
+                  onClick={testStl}
+                >
+                  生成stl数据
+                </Button>
+
+
       <List
-        style={{ width: '80vw' }}
-        size={'large'}
+        style={{ width: "80vw" }}
+        size={"large"}
         header="填写参数生成数据文件"
       >
         <List.Item>
@@ -186,7 +257,7 @@ function Config() {
           <div className="describe">上传图片文件，支持jpg/png/jpeg</div>
           <div className="">
             <Upload
-              style={{ width: '100%' }}
+              style={{ width: "100%" }}
               drag
               // multiple
               accept="image/*"
@@ -195,7 +266,7 @@ function Config() {
               onChange={(e) => {
                 fileRequest(e[0]);
                 e[0].percent = 100;
-                e[0].status = 'done';
+                e[0].status = "done";
               }}
               tip="仅支持图片"
             />
@@ -228,8 +299,9 @@ function Config() {
                     setPreset(PresetMode[e]);
                   }}
                 >
-                  <Radio value={PresetMode.default}>0.4喷嘴标准配置</Radio>
                   <Radio value={PresetMode.precision}>0.2喷嘴高细腻配置</Radio>
+                  <Radio value={PresetMode.default}>0.4喷嘴标准配置</Radio>
+                  <Radio value={PresetMode.speed}>0.4喷嘴快速配置</Radio>
                   <Radio value={PresetMode.custom}>自定义配置</Radio>
                 </RadioGroup>
               </div>
@@ -247,7 +319,7 @@ function Config() {
                   </div>
                 ) : null}
                 <InputNumber
-                  style={{ margin: '10px 24px 10px 0' }}
+                  style={{ margin: "10px 24px 10px 0" }}
                   size="large"
                   mode="button"
                   suffix="mm"
@@ -277,7 +349,7 @@ function Config() {
                 ) : null}
 
                 <InputNumber
-                  style={{ margin: '10px 24px 10px 0' }}
+                  style={{ margin: "10px 24px 10px 0" }}
                   size="large"
                   mode="button"
                   suffix="mm"
@@ -298,18 +370,23 @@ function Config() {
               <div className="title">成像区域长边长度(mm) </div>
               <div className="describe">不含边框，短边会自动缩放适应</div>
               <div className="describe">
-                常见的照片尺寸参考(暂时还不能点):
-                <Tag className="sizeTag">大1寸/小2寸: 33mm * 48mm</Tag>
-                <Tag className="sizeTag">5寸/3R: 89mm * 127mm</Tag>
-                <Tag className="sizeTag">6寸/4R: 102mm * 152mm</Tag>
-                <Tag className="sizeTag">7寸/5R: 127mm * 178mm</Tag>
-                <Tag className="sizeTag">8寸: 152mm * 203mm</Tag>
-                <Tag className="sizeTag">小12寸(大约是A4): 203mm * 305mm</Tag>
-                <Tag className="sizeTag">12寸(比A4略宽): 254mm * 305mm</Tag>
+                常见的照片尺寸参考(点击设置长边长度):
+                {PhotoSizeMap.map((i) => {
+                  return (
+                    <Tag
+                      className="sizeTag"
+                      onClick={() => {
+                        setPhotoSize(i);
+                      }}
+                    >
+                      {i.name}
+                    </Tag>
+                  );
+                })}
               </div>
               <div className="content">
                 <InputNumber
-                  style={{ margin: '10px 24px 10px 0' }}
+                  style={{ margin: "10px 24px 10px 0" }}
                   size="large"
                   mode="button"
                   suffix="mm"
@@ -324,13 +401,13 @@ function Config() {
                 />
               </div>
               <div className="content">
-                目前图片尺寸 - 宽*高: {ImagePrintSize.width} mm *{' '}
+                目前图片尺寸 - 宽*高: {ImagePrintSize.width} mm *{" "}
                 {ImagePrintSize.height} mm
               </div>
               <div className="content">
-                目前成片尺寸 (包含边框) - 宽*高*厚:{' '}
+                目前成片尺寸 (包含边框) - 宽*高*厚:{" "}
                 {(Number(ImagePrintSize.width) + BorderWidth * 2).toFixed(2)} mm
-                * {(Number(ImagePrintSize.height) + BorderWidth * 2).toFixed(2)}{' '}
+                * {(Number(ImagePrintSize.height) + BorderWidth * 2).toFixed(2)}{" "}
                 mm * {Math.max(MaxDeep, BorderHeight)} mm
               </div>
             </List.Item>
@@ -342,7 +419,7 @@ function Config() {
               </div>
               <div className="content">
                 <InputNumber
-                  style={{ margin: '10px 24px 10px 0' }}
+                  style={{ margin: "10px 24px 10px 0" }}
                   size="large"
                   mode="button"
                   suffix="mm"
@@ -372,7 +449,7 @@ function Config() {
               </div>
               <div className="content">
                 <InputNumber
-                  style={{ margin: '10px 24px 10px 0' }}
+                  style={{ margin: "10px 24px 10px 0" }}
                   size="large"
                   mode="button"
                   max={100}
@@ -404,19 +481,24 @@ function Config() {
               <>
                 <List.Item>
                   <div className="title">边框宽度(mm)</div>
-                  <div className="describe">这个不用解释吧</div>
+                  <div className="describe">
+                    会根据精细度调整，请注意最终取值
+                  </div>
                   <div className="content">
                     <InputNumber
-                      style={{ margin: '10px 24px 10px 0' }}
+                      style={{ margin: "10px 24px 10px 0" }}
                       size="large"
                       mode="button"
                       max={10}
                       min={0.1}
-                      step={0.1}
-                      precision={1}
+                      step={Number((1 / Quality).toFixed(2))}
+                      precision={2}
                       value={BorderWidth}
                       onChange={(value) => {
-                        setBorderWidth(value);
+                        const saveValue = Number(
+                          (Math.round(value * Quality) / Quality).toFixed(2)
+                        );
+                        setBorderWidth(saveValue);
                       }}
                     />
                   </div>
@@ -429,7 +511,7 @@ function Config() {
                   </div>
                   <div className="content">
                     <InputNumber
-                      style={{ margin: '10px 24px 10px 0' }}
+                      style={{ margin: "10px 24px 10px 0" }}
                       size="large"
                       mode="button"
                       max={10}
@@ -451,7 +533,7 @@ function Config() {
               <div className="describe">检查配置无误后开始生成</div>
               <div className="content">
                 <Button
-                  style={{ width: '100%', height: '50px' }}
+                  style={{ width: "100%", height: "50px" }}
                   disabled={!ParamOnReady}
                   type="primary"
                   onClick={generateDataDeep}
@@ -482,11 +564,11 @@ function Config() {
               </div>
               <div className="content">
                 <Button
-                  style={{ width: '100%', height: '50px' }}
+                  style={{ width: "100%", height: "50px" }}
                   disabled={!LoadingImage}
                   type="primary"
                   onClick={() => {
-                    downloadFile(DataDeep, 'DataDeep.dat');
+                    downloadFile(DataDeep, "DataDeep.dat");
                   }}
                 >
                   下载dat文件
@@ -501,11 +583,11 @@ function Config() {
               </div>
               <div className="content">
                 <Button
-                  style={{ width: '100%', height: '50px' }}
+                  style={{ width: "100%", height: "50px" }}
                   disabled={!LoadingImage}
                   type="primary"
                   onClick={() => {
-                    downloadFile(ScadFile, 'photo2stl.scad');
+                    downloadFile(ScadFile, "photo2stl.scad");
                   }}
                 >
                   下载scad文件
@@ -513,7 +595,7 @@ function Config() {
               </div>
             </List.Item>
 
-            <List.Item style={{ display: 'none' }}>
+            <List.Item style={{ display: "none" }}>
               <div className="title">预览效果图</div>
               <div className="describe">仅供参考</div>
               <div className="content">

@@ -2,7 +2,7 @@
  * @Author: error: error: git config user.name & please set dead value or install git && error: git config user.email & please set dead value or install git & please set dead value or install git
  * @Date: 2024-06-26 01:13:50
  * @LastEditors: chenguofeng chenguofeng@bytedance.com
- * @LastEditTime: 2024-06-26 21:41:45
+ * @LastEditTime: 2024-07-07 14:58:13
  * @FilePath: \photo2reliefNegativeFilm\src\image2DataDeep\image2DataDeep.ts
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -72,8 +72,8 @@ export async function getDataDeep(
           zoom = MaxLength / fileHeight;
         }
 
-        const finalWidth = zoom * fileWidth * Quality;
-        const finalHeight = zoom * fileHeight * Quality;
+        const finalWidth = zoom * fileWidth * Quality + Quality;
+        const finalHeight = zoom * fileHeight * Quality + Quality;
 
         canvas.width = finalWidth;
         canvas.height = finalHeight;
@@ -108,14 +108,14 @@ export async function getDataDeep(
     }
     const deep = (
       (layerNumber - Math.round(light / layerLight)) * LayerDeep +
-      BaseDeep
+      BaseDeep - LayerDeep
     )
       .toFixed(2)
       .toString();
     if (Number(deep) > Number(maxPrintDeep)) {
       maxPrintDeep = Number(deep);
     }
-    return Number(deep);
+    return Number(deep)*100;
   };
 
   //添加边框
@@ -123,12 +123,13 @@ export async function getDataDeep(
     if (!AddBorder) {
       return deepMap;
     }
-    const BorderDeep = BorderHeight.toFixed(2).toString();
-    const boderSize = BorderWidth * 10;
+    const BorderDeep = (BorderHeight*100).toFixed(2).toString();
+    const boderSize = Math.round(BorderWidth*Quality)  ;
     const Linelength = deepMap[0].length + boderSize * 2;
     deepMap.map((line) => {
       line.push(...Array(boderSize).fill(BorderDeep));
       line.unshift(...Array(boderSize).fill(BorderDeep));
+      return line;
     });
     const boderLine = Array(Linelength).fill(BorderDeep);
     deepMap.push(...Array(boderSize).fill(boderLine));
@@ -229,7 +230,7 @@ export async function getDataDeep(
   setProgressInfo('添加边框');
   setProgress(70);
   const deepMapWithBorder = generateBorder(deepMap);
-  //   console.error({ deepMapWithBorder });
+  //   console.error({ deepMaany as BlobthBorder });
 
   setProgressInfo('生成DateDeep');
   setProgress(80);
@@ -241,12 +242,12 @@ export async function getDataDeep(
 
 export function getScad(Quality: number): string {
   return `
-scale([${1 / Quality}, ${1 / Quality}, 1])
+scale([${1 / Quality}, ${1 / Quality}, 0.01])
   surface(file = "DataDeep.dat", center = true, invert = false);
 `;
 }
 
-export function downloadFile(file: string, fileName: string): void {
+export function downloadFile(file: string|Blob , fileName: string): void {
   console.log('downloadFile', fileName);
   fileDownload(file, fileName);
   //   const blob = new Blob([file]);
