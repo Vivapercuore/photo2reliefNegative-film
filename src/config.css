@@ -2,7 +2,11 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  position: relative;
+  height: 100vh;
+  max-height: 100vh;
+  width: 100%;
+  overflow: scroll;
 }
 .header {
   background-color: #282c34;
@@ -21,9 +25,14 @@
   justify-content: center;
   margin-top: 10px;
 }
-.previewImage {
+.inputImage {
   width: 100%;
   max-height: 80vh;
+  object-fit: contain;
+}
+.previewImage {
+  width: 100%;
+  max-height: 40vh;
   object-fit: contain;
 }
 .sizeTag {
@@ -31,4 +40,21 @@
 }
 .bottom {
   margin-top: 10vh;
+}
+.list .arco-list-content {
+  width: 80vw;
+  margin: 0 10vw;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: scroll;
+  position: relative;
+}
+.sticky {
+  background-color: #282c34;
+  position: sticky;
+  top: 0;
+  z-index: 9;
+}
+.sticky.arco-list-item {
+  overflow: auto;
 }

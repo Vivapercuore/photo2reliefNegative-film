@@ -2,7 +2,7 @@
  * @Author: error: error: git config user.name & please set dead value or install git && error: git config user.email & please set dead value or install git & please set dead value or install git
  * @Date: 2024-06-25 22:47:01
  * @LastEditors: chenguofeng chenguofeng@bytedance.com
- * @LastEditTime: 2024-07-12 02:12:50
+ * @LastEditTime: 2024-07-21 01:57:25
  * @FilePath: \photo2reliefNegativeFilm\src\config.tsx
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -20,13 +20,10 @@ import {
   Tag,
 } from "@arco-design/web-react";
 
-import {
-  getDataDeep,
-  getScad,
-  downloadFile,
-} from "./image2DataDeep/image2DataDeep";
+import { getScad, downloadFile } from "./dataProcess/dataTools";
 
-import { sendStl } from "./image2DataDeep/test/data2module"
+import { getgrayPhoto } from "./dataProcess/grayPhoto";
+import { getColorPhoto } from "./dataProcess/colorPhoto";
 
 const RadioGroup = Radio.Group;
 
@@ -191,7 +188,7 @@ function Config() {
 
   const generateDataDeep = async () => {
     try {
-      const dataDeepMapDat = await getDataDeep(
+      const dataDeepMapDat = await getgrayPhoto(
         ImageUrlData,
         {
           BaseDeep,
@@ -229,30 +226,45 @@ function Config() {
     setMaxLength(longLine);
   };
 
-const testStl = () =>{
-  const blob =  sendStl() as any;
-  downloadFile(blob,'teststl.stl')
-}
+  const testStl = async () => {
+    // const blob =
+    const cmykDat = (await getColorPhoto(
+      ImageUrlData,
+      {
+        BaseDeep,
+        LayerDeep,
+        MaxLength,
+        MaxDeep,
+        Quality,
+        AddBorder,
+        BorderWidth,
+        BorderHeight,
+      },
+      setProgress,
+      setProgressInfo,
+      setImagePreview
+    )) as any;
+    // console.error(cmykDat);
+    downloadFile(cmykDat.dataDeepMapDatC, "dataDeepMapDatC.dat");
+    downloadFile(cmykDat.dataDeepMapDatM, "dataDeepMapDatM.dat");
+    downloadFile(cmykDat.dataDeepMapDatY, "dataDeepMapDatY.dat");
+    downloadFile(cmykDat.dataDeepMapDatK, "dataDeepMapDatK.dat");
+  };
 
   return (
     <div className="config">
-      {/* <h3 className="header"></h3> */}
-      
-      <Button
-                  style={{ width: "100%", height: "50px" }}
-                  type="primary"
-                  onClick={testStl}
-                >
-                  生成stl数据
-                </Button>
+      {/* <h3 className="header sticky">test</h3> */}
 
+      <List className="list" size={"large"} header="填写参数生成数据文件">
+        <Button
+          style={{ width: "100%", height: "50px" }}
+          type="primary"
+          onClick={testStl}
+        >
+          生成stl数据
+        </Button>
 
-      <List
-        style={{ width: "80vw" }}
-        size={"large"}
-        header="填写参数生成数据文件"
-      >
-        <List.Item>
+        <List.Item key="1">
           <div className="title">选择图像</div>
           <div className="describe">上传图片文件，支持jpg/png/jpeg</div>
           <div className="">
@@ -275,7 +287,7 @@ const testStl = () =>{
                 <div className="title">预览图</div>
                 <div className="describe">并非效果图</div>
                 {/* eslint-disable-next-line jsx-a11y/alt-text */}
-                <img className="previewImage" src={ImageUrlData} />
+                <img className="inputImage" src={ImageUrlData} />
               </div>
             ) : null}
           </div>
@@ -283,7 +295,7 @@ const testStl = () =>{
 
         {ImageUrlData ? (
           <>
-            <List.Item>
+            <List.Item key="2">
               <div className="title">使用哪种预设</div>
               <div className="describe">
                 使用预设，直接下载对应3mf,替换模型后切片打印
@@ -307,7 +319,7 @@ const testStl = () =>{
               </div>
             </List.Item>
 
-            <List.Item>
+            <List.Item key="3">
               <div className="title">单层层高(mm) </div>
               <div className="describe">
                 打印机中的设置必须和此处严格一致，设置这里，再修改打印机
@@ -336,7 +348,7 @@ const testStl = () =>{
               </div>
             </List.Item>
 
-            <List.Item>
+            <List.Item key="4">
               <div className="title">首层层高(mm)</div>
               <div className="describe">
                 打印机中的设置必须和此处严格一致，设置这里，再修改打印机
@@ -366,7 +378,20 @@ const testStl = () =>{
               </div>
             </List.Item>
 
-            <List.Item>
+            <List.Item key="5" className="sticky">
+              <div className="title">预览效果图</div>
+              <div className="describe">仅供参考</div>
+              <div className="content">
+                {/* {ImagePreview ? ( */}
+                <div>
+                  {/* eslint-disable-next-line jsx-a11y/alt-text */}
+                  <img className="previewImage" src={ImagePreview} />
+                </div>
+                {/* ) : null} */}
+              </div>
+            </List.Item>
+
+            <List.Item key="6">
               <div className="title">成像区域长边长度(mm) </div>
               <div className="describe">不含边框，短边会自动缩放适应</div>
               <div className="describe">
@@ -412,7 +437,7 @@ const testStl = () =>{
               </div>
             </List.Item>
 
-            <List.Item>
+            <List.Item key="7">
               <div className="title">成像区域最大厚度(mm)</div>
               <div className="describe">
                 包括首层，不含边框，请根据自己的材料透光性设置
@@ -435,7 +460,7 @@ const testStl = () =>{
               </div>
             </List.Item>
 
-            <List.Item>
+            <List.Item key="8">
               <div className="title">精细度(整数)</div>
               <div className="describe">
                 每mm有多少个像素,和打印机的xy分辨率有关
@@ -464,7 +489,7 @@ const testStl = () =>{
               </div>
             </List.Item>
 
-            <List.Item>
+            <List.Item key="9">
               <div className="title">是否开启边框</div>
               <div className="describe">在边缘生成一圈边框</div>
               <div className="content">
@@ -479,7 +504,7 @@ const testStl = () =>{
             </List.Item>
             {AddBorder ? (
               <>
-                <List.Item>
+                <List.Item key="10">
                   <div className="title">边框宽度(mm)</div>
                   <div className="describe">
                     会根据精细度调整，请注意最终取值
@@ -504,7 +529,7 @@ const testStl = () =>{
                   </div>
                 </List.Item>
 
-                <List.Item>
+                <List.Item key="11">
                   <div className="title">边框高度(mm)</div>
                   <div className="describe">
                     你说多高就多高,建议比 成像区域最大厚度:{MaxDeep} 要高
@@ -528,7 +553,7 @@ const testStl = () =>{
               </>
             ) : null}
 
-            <List.Item>
+            <List.Item key="12">
               <div className="title">生成dat数据</div>
               <div className="describe">检查配置无误后开始生成</div>
               <div className="content">
@@ -543,7 +568,7 @@ const testStl = () =>{
               </div>
             </List.Item>
 
-            <List.Item>
+            <List.Item key="13">
               <div className="title">生成进度</div>
               <div className="describe">修改配置会清空数据缓存</div>
               <div className="content">
@@ -556,7 +581,7 @@ const testStl = () =>{
               </div>
             </List.Item>
 
-            <List.Item>
+            <List.Item key="14">
               <div className="title">下载dat文件</div>
               <div className="describe">每次生成后下载新的数据文件</div>
               <div className="describe">
@@ -576,7 +601,7 @@ const testStl = () =>{
               </div>
             </List.Item>
 
-            <List.Item>
+            <List.Item key="15">
               <div className="title">下载scad文件</div>
               <div className="describe">
                 修改精细度后需要下载新的scad，不修改精细度不需要更新
@@ -592,19 +617,6 @@ const testStl = () =>{
                 >
                   下载scad文件
                 </Button>
-              </div>
-            </List.Item>
-
-            <List.Item style={{ display: "none" }}>
-              <div className="title">预览效果图</div>
-              <div className="describe">仅供参考</div>
-              <div className="content">
-                {ImagePreview ? (
-                  <div>
-                    {/* eslint-disable-next-line jsx-a11y/alt-text */}
-                    <img className="previewImage" src={ImagePreview} />
-                  </div>
-                ) : null}
               </div>
             </List.Item>
           </>

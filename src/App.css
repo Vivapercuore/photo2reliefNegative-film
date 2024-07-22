@@ -1,7 +1,12 @@
-.App {
+#root,.App {
   text-align: center;
+  width: 100%;
+  /* overflow: scroll; */
 }
 
+*::-webkit-scrollbar{
+  display: none;
+}
 
 
 .App-header {
