@@ -270,7 +270,7 @@ export function CmykToCmy(
   return [C + K, M + K, Y + K];
 }
 
-export function getCMYKHeightArray(
+export function getCMYKHeightArray1(
   cmykMap: Array<Array<CMYKPixel>>,
   gray: { c: number; m: number; y: number; k: number }
 ): CmkydeepMap {
@@ -285,27 +285,6 @@ export function getCMYKHeightArray(
   let grayC = gray.c;
   let grayM = gray.m;
   let grayY = gray.y;
-  // const maxGray = Math.max(grayC,grayM,grayY)
-  // if(maxGray>1){
-  //   const grayCoefficient = 1/maxGray
-  //   grayC = grayC*grayCoefficient
-  //   grayM = grayM*grayCoefficient
-  //   grayY = grayY*grayCoefficient
-  // }  // 确保最终每个light的height系数值低于k
-
-  // // 此处得到的k值是cmy叠加得到的明度厚度，需要用全局明度得到真正的K高度
-  // for (let line = 0; line < cmykMap.length; line++) {
-  //   const cmykline = cmykMap[line];
-  //   for (let index = 0; index < cmykline.length; index++) {
-  //     const cmykpixel = cmykline[index];
-  //     cmykHeightMap.c[line][index] = cmykpixel[0] * 100;
-  //     cmykHeightMap.m[line][index] = (cmykpixel[1] + cmykpixel[0]) * 100;
-  //     cmykHeightMap.y[line][index] =
-  //       (cmykpixel[2] + cmykpixel[1] + cmykpixel[0]) * 100;
-  //     cmykHeightMap.k[line][index] =
-  //       ( cmykpixel[2]*grayY + cmykpixel[1]*grayM + cmykpixel[0]*grayC) * 100;
-  //   }
-  // }
 
   // 使用gray明度系数对色值高度进行修正
   for (let line = 0; line < cmykMap.length; line++) {
@@ -327,14 +306,14 @@ export function getCMYKHeightArray(
   //逐级叠加厚度，然后对模型进行布尔运算
 }
 
-export function getfinalHeightArray(cmykMap: CmkydeepMap, lightmap: DeepMap) {
+export function getfinalHeightArray1(cmykMap: CmkydeepMap, lightmap: DeepMap) {
   const cmy = cloneDeep(cmykMap.k);
   // 合成最终k层高度
   cmykMap.k = lightmap.map((line, lineIndex) => {
     return line.map((pix, index) => {
       const cmydeep = cmy[lineIndex][index]; // cmy 的掩蔽高度
       const yheight = cmykMap.y[lineIndex][index]; // cmy层的物理叠加高度
-      //yheight一定高于cmydeep
+      //yheight一定高于cmydeep,yheight已经叠加了cm高度
       //获得明度差值
       const kdeep = pix - cmydeep;
       // console.log({pix,cmydeep,yheight,kdeep})
@@ -344,6 +323,87 @@ export function getfinalHeightArray(cmykMap: CmkydeepMap, lightmap: DeepMap) {
   });
   return cmykMap;
 }
+
+
+
+/**
+ * 生成CMY的叠加高度,保证颜色正确
+ * 然后根据系数换算等于明度多少
+ */
+export function getCMYKHeightArray(
+  cmykMap: Array<Array<CMYKPixel>>,
+  gray: { c: number; m: number; y: number; k: number }
+): CmkydeepMap {
+  const width = cmykMap[0].length;
+  const height = cmykMap.length;
+  const cmykHeightMap = {
+    c: new Array(height).fill(0).map((i) => new Array(width).fill(0)),
+    m: new Array(height).fill(0).map((i) => new Array(width).fill(0)),
+    y: new Array(height).fill(0).map((i) => new Array(width).fill(0)),
+    k: new Array(height).fill(0).map((i) => new Array(width).fill(0)),
+  } as CmkydeepMap;
+  let grayC = gray.c;
+  let grayM = gray.m;
+  let grayY = gray.y;
+
+  // 使用gray明度系数对色值高度进行修正
+  for (let line = 0; line < cmykMap.length; line++) {
+    const cmykline = cmykMap[line];
+    for (let index = 0; index < cmykline.length; index++) {
+      const cmykpixel = cmykline[index];
+      cmykHeightMap.c[line][index] = cmykpixel[0] * 100;
+      cmykHeightMap.m[line][index] =
+        (cmykpixel[1] + cmykpixel[0]) * 100;
+      cmykHeightMap.y[line][index] =
+        (cmykpixel[2] + cmykpixel[1] + cmykpixel[0]) * 100;
+      cmykHeightMap.k[line][index] =
+        (cmykpixel[2] / grayY + cmykpixel[1] / grayM + cmykpixel[0] / grayC) *
+        100;
+    }
+  }
+
+  return cmykHeightMap;
+  //逐级叠加厚度，然后对模型进行布尔运算
+}
+
+/**
+ * 从cmyDeep获取等效明度
+ * 从lightMap获取应有明度,扣除底部和顶部层高
+ * 计算其比差值，应用到整个CMYdeep
+ */
+export function getfinalHeightArray(cmykMap: CmkydeepMap, lightmap: DeepMap) {
+  const cmykDeepMak = cloneDeep(cmykMap.k);
+  // 最大压缩比例
+  let maxCompressionRatio = 1
+  // 合成最终k层高度
+  lightmap.map((line, lineIndex) => {  // 每行扫描
+    // 逐个像素比对
+    line.map((pix, index) => {
+      //等效明度
+      const cmydeep = cmykMap.k[lineIndex][index]; // cmy 的掩蔽高度
+      //获得明度压缩比
+      const compressionRatio = pix / cmydeep;
+      if (compressionRatio > maxCompressionRatio) {
+        maxCompressionRatio = compressionRatio
+      }
+      // 把明度值直接赋值给K,cmy需要用maxCompressionRatio压缩一下
+      cmykDeepMak.k[lineIndex][index] = pix
+    });
+  });
+
+  lightmap.map((line, lineIndex) => {  // 每行扫描
+    // 逐个像素比对
+    line.map((pix, index) => {
+      // cmy用maxCompressionRatio压缩一下
+      cmykDeepMak.c[lineIndex][index] = cmykMap.c[lineIndex][index] / maxCompressionRatio
+      cmykDeepMak.m[lineIndex][index] = cmykMap.m[lineIndex][index] / maxCompressionRatio
+      cmykDeepMak.y[lineIndex][index] = cmykMap.y[lineIndex][index] / maxCompressionRatio
+    });
+  });
+
+  return cmykDeepMak;
+}
+
 
 export function getScad(Quality: number): string {
   return `
