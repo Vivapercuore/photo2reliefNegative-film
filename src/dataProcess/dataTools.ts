@@ -6,7 +6,9 @@
  * @FilePath: \photo2reliefNegativeFilm\src\image2DataDeep\image2DataDeep.ts
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
+// @ts-ignore
 import { Message } from "@arco-design/web-react";
+// @ts-ignore
 import fileDownload from "js-file-download";
 import { cloneDeep } from "lodash-es";
 import {
@@ -214,6 +216,15 @@ export const getDeep = function (
 export function toDatString(lightArray: DeepMap) {
   return lightArray.map((line) => line.join(" ")).join("\n");
 }
+export function fromDatString(datString: string): DeepMap {
+  return datString
+    .trim()
+    .split('\n')
+    .map(line => 
+      line.split(' ')
+         .map(val => Number(val))
+    );
+}
 
 export function getCmykList(pixellist: RGBMap, toCmy: boolean = false) {
   return pixellist.map((pixelLine) =>
@@ -230,7 +241,7 @@ export function RgbaToCmyk(
   A: number = 1,
   toCmy: boolean = false
 ): CMYKPixel {
-  if (R == 0 && G == 0 && B == 0) {
+  if (R === 0 && G === 0 && B === 0) { // 将==改为===
     return [0, 0, 0, 1];
   } else {
     var calcR = 1 - R / 255,

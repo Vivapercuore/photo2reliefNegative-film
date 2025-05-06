@@ -18,12 +18,16 @@ import {
   Button,
   Progress,
   Tag,
+  // @ts-ignore 忽略找不到模块或类型声明的报错
 } from "@arco-design/web-react";
+import { debounce } from 'lodash-es';
 
-import { getScad, downloadFile } from "./dataProcess/dataTools";
+import { getScad, downloadFile, fromDatString } from "./dataProcess/dataTools";
 
 import { getgrayPhoto } from "./dataProcess/grayPhoto";
-import { getColorPhoto } from "./dataProcess/colorPhoto";
+// import { getColorPhoto } from "./dataProcess/colorPhoto";
+import { DeepMap } from "./dataProcess/type";
+import { PhotoSizeMap } from "./constants";
 
 const RadioGroup = Radio.Group;
 
@@ -34,43 +38,7 @@ enum PresetMode {
   "custom" = "custom",
 }
 
-const PhotoSizeMap = [
-  {
-    name: "大1寸/小2寸: 33mm * 48mm",
-    width: 33,
-    height: 48,
-  },
-  {
-    name: "5寸/3R: 89mm * 127mm",
-    width: 89,
-    height: 127,
-  },
-  {
-    name: "6寸/4R: 102mm * 152mm",
-    width: 102,
-    height: 152,
-  },
-  {
-    name: "7寸/5R: 127mm * 178mm",
-    width: 127,
-    height: 178,
-  },
-  {
-    name: "8寸: 152mm * 203mm",
-    width: 152,
-    height: 203,
-  },
-  {
-    name: "小12寸(大约是A4): 203mm * 305mm",
-    width: 203,
-    height: 305,
-  },
-  {
-    name: "12寸(比A4略宽): 254mm * 305mm",
-    width: 254,
-    height: 305,
-  },
-];
+// 删除原来的 PhotoSizeMap 定义
 
 function Config() {
   const [Preset, setPreset] = useState(PresetMode.default);
@@ -180,8 +148,8 @@ function Config() {
   const [LoadingImage, setLoadingImage] = useState(false);
   // 深度图
   const [DataDeep, setDataDeep] = useState("");
-  // scad
   const [ScadFile, setScadFile] = useState("");
+  const [dataDeepMapDat, setDataDeepMapDat] = useState<DeepMap | null>(null); // 新增状态
   useEffect(() => {
     setLoadingImage(Boolean(DataDeep) && Boolean(ScadFile));
   }, [DataDeep, ScadFile]);
@@ -226,9 +194,48 @@ function Config() {
     setMaxLength(longLine);
   };
 
-  const testStl = async () => {
-    // const blob =
-    const cmykDat = (await getColorPhoto(
+  // 防抖绘制预览图
+  const drawPreview = debounce((data: DeepMap) => {
+    if (!data || data.length === 0) return;
+
+    const canvas = document.getElementById('previewCanvas') as HTMLCanvasElement;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // 根据数据设置canvas尺寸
+    const width = data[0].length; // 使用数据的宽度
+    const height = data.length;   // 使用数据的高度
+    canvas.width = width;
+    canvas.height = height;
+    
+    const imageData = ctx.createImageData(width, height);
+    
+    // 将深度数据映射到灰度值，并反转明暗关系
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const value = 255 - data[height - 1 - y][x]; // 反转Y轴坐标并反转明暗
+        const idx = (y * width + x) * 4;
+        imageData.data[idx] = value;     // R
+        imageData.data[idx + 1] = value; // G
+        imageData.data[idx + 2] = value; // B
+        imageData.data[idx + 3] = 255;   // Alpha
+      }
+    }
+    
+    ctx.putImageData(imageData, 0, 0);
+  }, 300); // 300ms防抖
+
+  useEffect(() => {
+    if (dataDeepMapDat) {
+      drawPreview(dataDeepMapDat);
+    }
+  }, [dataDeepMapDat, drawPreview]); // 添加drawPreview到依赖数组
+
+  // 监听，生成dataDeepMapDat
+  useEffect(() => {
+    getgrayPhoto(
       ImageUrlData,
       {
         BaseDeep,
@@ -243,26 +250,59 @@ function Config() {
       setProgress,
       setProgressInfo,
       setImagePreview
-    )) as any;
-    // console.error(cmykDat);
-    downloadFile(cmykDat.dataDeepMapDatC, "dataDeepMapDatC.dat");
-    downloadFile(cmykDat.dataDeepMapDatM, "dataDeepMapDatM.dat");
-    downloadFile(cmykDat.dataDeepMapDatY, "dataDeepMapDatY.dat");
-    downloadFile(cmykDat.dataDeepMapDatK, "dataDeepMapDatK.dat");
-  };
+    ).then((dataDeepMapDat) => {
+      setDataDeepMapDat(fromDatString(dataDeepMapDat))
+    })
+  }, [ImageUrlData,
+    BaseDeep,
+    LayerDeep,
+    MaxLength,
+    MaxDeep,
+    Quality,
+    AddBorder,
+    BorderWidth,
+    BorderHeight,]);
+
+
+
+  // const testStl = async () => {
+  //   // const blob =
+  //   const cmykDat = (await getColorPhoto(
+  //     ImageUrlData,
+  //     {
+  //       BaseDeep,
+  //       LayerDeep,
+  //       MaxLength,
+  //       MaxDeep,
+  //       Quality,
+  //       AddBorder,
+  //       BorderWidth,
+  //       BorderHeight,
+  //     },
+  //     setProgress,
+  //     setProgressInfo,
+  //     setImagePreview
+  //   )) as any;
+  //   // console.error(cmykDat);
+  //   downloadFile(cmykDat.dataDeepMapDatC, "dataDeepMapDatC.dat");
+  //   downloadFile(cmykDat.dataDeepMapDatM, "dataDeepMapDatM.dat");
+  //   downloadFile(cmykDat.dataDeepMapDatY, "dataDeepMapDatY.dat");
+  //   downloadFile(cmykDat.dataDeepMapDatK, "dataDeepMapDatK.dat");
+  // };
 
   return (
     <div className="config">
       {/* <h3 className="header sticky">test</h3> */}
 
       <List className="list" size={"large"} header="填写参数生成数据文件">
-        <Button
+
+        {/* <Button
           style={{ width: "100%", height: "50px" }}
           type="primary"
           onClick={testStl}
         >
           生成stl数据
-        </Button>
+        </Button> */}
 
         <List.Item key="1">
           <div className="title">选择图像</div>
@@ -275,7 +315,7 @@ function Config() {
               accept="image/*"
               listType="text"
               limit={1}
-              onChange={(e) => {
+              onChange={(e: any) => {
                 fileRequest(e[0]);
                 e[0].percent = 100;
                 e[0].status = "done";
@@ -295,6 +335,7 @@ function Config() {
 
         {ImageUrlData ? (
           <>
+
             <List.Item key="2">
               <div className="title">使用哪种预设</div>
               <div className="describe">
@@ -341,7 +382,7 @@ function Config() {
                   step={0.02}
                   precision={2}
                   value={LayerDeep}
-                  onChange={(value) => {
+                  onChange={(value: number) => {
                     setLayerDeep(value);
                   }}
                 />
@@ -371,29 +412,43 @@ function Config() {
                   step={0.04}
                   precision={2}
                   value={BaseDeep}
-                  onChange={(value) => {
+                  onChange={(value: number) => {
                     setBaseDeep(value);
                   }}
                 />
               </div>
             </List.Item>
 
-            <List.Item key="5" className="sticky">
+            {/* <List.Item key="5" className="sticky">
               <div className="title">预览效果图</div>
               <div className="describe">仅供参考</div>
               <div className="content">
-                {/* {ImagePreview ? ( */}
+                {ImagePreview ? (
                 <div>
-                  {/* eslint-disable-next-line jsx-a11y/alt-text */}
                   <img className="previewImage" src={ImagePreview} />
                 </div>
-                {/* ) : null} */}
+               ) : null} 
+              </div>
+              </List.Item> */}
+              
+            <List.Item key="5" className="sticky">
+              <div className="title">预览效果图</div>
+              <div className="describe">仅供参考，包含边框情况</div>
+              <div className="content">
+                <canvas
+                  id="previewCanvas"
+                  width={500}
+                  height={500}
+                  style={{ border: '1px solid #ccc' }}
+                />
               </div>
             </List.Item>
+            
 
             <List.Item key="6">
               <div className="title">成像区域长边长度(mm) </div>
               <div className="describe">不含边框，短边会自动缩放适应</div>
+              <div className="describe">请注意自己打印机能支持的最大尺寸</div>
               <div className="describe">
                 常见的照片尺寸参考(点击设置长边长度):
                 {PhotoSizeMap.map((i) => {
@@ -420,7 +475,7 @@ function Config() {
                   step={1}
                   precision={1}
                   value={MaxLength}
-                  onChange={(value) => {
+                  onChange={(value: number) => {
                     setMaxLength(value);
                   }}
                 />
@@ -453,7 +508,7 @@ function Config() {
                   step={0.5}
                   precision={1}
                   value={MaxDeep}
-                  onChange={(value) => {
+                  onChange={(value: number) => {
                     setMaxDeep(value);
                   }}
                 />
@@ -482,7 +537,7 @@ function Config() {
                   step={1}
                   precision={0}
                   value={Quality}
-                  onChange={(value) => {
+                  onChange={(value: number) => {
                     setQuality(value);
                   }}
                 />
@@ -496,7 +551,7 @@ function Config() {
                 <Switch
                   type="round"
                   checked={AddBorder}
-                  onChange={(value) => {
+                  onChange={(value: boolean) => {
                     setAddBorder(value);
                   }}
                 />
@@ -519,7 +574,7 @@ function Config() {
                       step={Number((1 / Quality).toFixed(2))}
                       precision={2}
                       value={BorderWidth}
-                      onChange={(value) => {
+                      onChange={(value: number) => {
                         const saveValue = Number(
                           (Math.round(value * Quality) / Quality).toFixed(2)
                         );
@@ -544,7 +599,7 @@ function Config() {
                       step={0.1}
                       precision={0}
                       value={BorderHeight}
-                      onChange={(value) => {
+                      onChange={(value: number) => {
                         setBorderHeight(value);
                       }}
                     />
@@ -576,7 +631,7 @@ function Config() {
                   percent={ProgressData}
                   color="#5289e9"
                   formatText={() => ProgressText}
-                  // style={{ marginBottom: 20 }}
+                // style={{ marginBottom: 20 }}
                 />
               </div>
             </List.Item>

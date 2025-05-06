@@ -2,12 +2,10 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  // justify-content: center;
   position: relative;
-  height: 100vh;
   max-height: 100vh;
   width: 100%;
-  overflow: scroll;
+  overflow: hidden;  // 修改为hidden
 }
 
 .header {
@@ -40,6 +38,12 @@
   object-fit: contain;
 }
 
+#previewCanvas {
+  width: 100%;
+  max-height: 40vh;
+  object-fit: contain;
+}
+
 .sizeTag {
   margin: 5px;
 }
@@ -51,11 +55,19 @@
 .list {
   .arco-list-content {
     width: 80vw;
-    margin: 0 10vw;
-    height: 100vh;
-    max-height: 100vh;
-    overflow: scroll;
+    padding: 0 10vw;
+    height: calc(100vh - 20px); // 减去一些边距
+    max-height: calc(100vh - 20px); 
+    overflow: auto;  // 只保留一个滚动条
     position: relative;
+    @media (max-width: 600px) {
+      width: 100vw;
+      padding: 0;
+    }
+  }
+  
+  .arco-list-item:last-child {
+    padding-bottom: 100px;
   }
 }
 
