@@ -22,7 +22,7 @@ import {
 } from "@arco-design/web-react";
 import { debounce } from 'lodash-es';
 
-import { getScad, downloadFile, fromDatString } from "./dataProcess/dataTools";
+import { getScad, downloadFile, fromDatString, toDatString } from "./dataProcess/dataTools";
 
 import { getgrayPhoto } from "./dataProcess/grayPhoto";
 // import { getColorPhoto } from "./dataProcess/colorPhoto";
@@ -63,6 +63,7 @@ function Config() {
   const [MaxDeep, setMaxDeep] = useState(2.6);
   const [Quality, setQuality] = useState(5);
   const [AddBorder, setAddBorder] = useState(true);
+  const [PreventWhiteHollow, setPreventWhiteHollow] = useState(true);
   const [BorderWidth, setBorderWidth] = useState(2);
   const [BorderHeight, setBorderHeight] = useState(3);
 
@@ -75,7 +76,6 @@ function Config() {
     width: "0",
     height: "0",
   });
-  const [ImagePreview, setImagePreview] = useState<string>("");
   const fileRequest = (file: any) => {
     const reader = new FileReader();
     if (!file?.originFile) {
@@ -156,25 +156,38 @@ function Config() {
 
   const generateDataDeep = async () => {
     try {
-      const dataDeepMapDat = await getgrayPhoto(
-        ImageUrlData,
-        {
-          BaseDeep,
-          LayerDeep,
-          MaxLength,
-          MaxDeep,
-          Quality,
-          AddBorder,
-          BorderWidth,
-          BorderHeight,
-        },
-        setProgress,
-        setProgressInfo,
-        setImagePreview
-      );
+      setProgressInfo("获取数据");
+      setProgress(10);
+      
+      // 直接使用已经计算好的深度数据，避免重复计算
+      if (!dataDeepMapDat) {
+        // 如果还没有计算过，才进行计算
+        const dataDeepMapDatStr = await getgrayPhoto(
+          ImageUrlData,
+          {
+            BaseDeep,
+            LayerDeep,
+            MaxLength,
+            MaxDeep,
+            Quality,
+            AddBorder,
+            BorderWidth,
+            BorderHeight,
+            PreventWhiteHollow,
+          },
+          setProgress,
+          setProgressInfo
+        );
+        setDataDeepMapDat(fromDatString(dataDeepMapDatStr));
+        setDataDeep(dataDeepMapDatStr);
+      } else {
+        // 将深度数据转换回字符串格式
+        const dataDeepMapDatStr = toDatString(dataDeepMapDat);
+        setDataDeep(dataDeepMapDatStr);
+      }
+      
       setProgressInfo("生成DataDeep文件");
       setProgress(90);
-      setDataDeep(dataDeepMapDat);
       setProgressInfo("生成Scad文件");
       setProgress(95);
       const dataScad = getScad(Quality);
@@ -195,7 +208,7 @@ function Config() {
   };
 
   // 防抖绘制预览图
-  const drawPreview = debounce((data: DeepMap) => {
+  const drawPreview = debounce((data: DeepMap, maxDeepSetting: number) => {
     if (!data || data.length === 0) return;
 
     const canvas = document.getElementById('previewCanvas') as HTMLCanvasElement;
@@ -209,13 +222,20 @@ function Config() {
     const height = data.length;   // 使用数据的高度
     canvas.width = width;
     canvas.height = height;
-    
+
     const imageData = ctx.createImageData(width, height);
-    
+
+    // 使用设置的成像区域最大厚度作为归一化的最大值（数据中的深度值是实际值*100）
+    const maxDeepValue = maxDeepSetting * 100;
+
     // 将深度数据映射到灰度值，并反转明暗关系
+    // 深度值越大（越厚）应该越暗（灰度值越小）
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        const value = 255 - data[height - 1 - y][x]; // 反转Y轴坐标并反转明暗
+        // 归一化深度值到 0-255 范围，然后反转（厚=暗，薄=亮）
+        const deepValue = data[height - 1 - y][x]; // 反转Y轴坐标
+        const normalizedValue = Math.round((deepValue / maxDeepValue) * 255);
+        const value = 255 - normalizedValue; // 反转：厚的地方暗，薄的地方亮
         const idx = (y * width + x) * 4;
         imageData.data[idx] = value;     // R
         imageData.data[idx + 1] = value; // G
@@ -223,15 +243,15 @@ function Config() {
         imageData.data[idx + 3] = 255;   // Alpha
       }
     }
-    
+
     ctx.putImageData(imageData, 0, 0);
   }, 300); // 300ms防抖
 
   useEffect(() => {
     if (dataDeepMapDat) {
-      drawPreview(dataDeepMapDat);
+      drawPreview(dataDeepMapDat, MaxDeep);
     }
-  }, [dataDeepMapDat, drawPreview]); // 添加drawPreview到依赖数组
+  }, [dataDeepMapDat, drawPreview, MaxDeep]); // 添加MaxDeep到依赖数组
 
   // 监听，生成dataDeepMapDat
   useEffect(() => {
@@ -244,12 +264,12 @@ function Config() {
         MaxDeep,
         Quality,
         AddBorder,
+        PreventWhiteHollow,
         BorderWidth,
         BorderHeight,
       },
       setProgress,
-      setProgressInfo,
-      setImagePreview
+      setProgressInfo
     ).then((dataDeepMapDat) => {
       setDataDeepMapDat(fromDatString(dataDeepMapDat))
     })
@@ -260,6 +280,7 @@ function Config() {
     MaxDeep,
     Quality,
     AddBorder,
+    PreventWhiteHollow,
     BorderWidth,
     BorderHeight,]);
 
@@ -430,7 +451,7 @@ function Config() {
                ) : null} 
               </div>
               </List.Item> */}
-              
+
             <List.Item key="5" className="sticky">
               <div className="title">预览效果图</div>
               <div className="describe">仅供参考，包含边框情况</div>
@@ -443,13 +464,13 @@ function Config() {
                 />
               </div>
             </List.Item>
-            
+
 
             <List.Item key="6">
               <div className="title">成像区域长边长度(mm) </div>
-              <div className="describe">不含边框，短边会自动缩放适应</div>
-              <div className="describe">请注意自己打印机能支持的最大尺寸</div>
-              <div className="describe">
+              <div className="describe" key="6-2">不含边框，短边会自动缩放适应</div>
+              <div className="describe" key="6-3">请注意自己打印机能支持的最大尺寸</div>
+              <div className="describe" key="6-4">
                 常见的照片尺寸参考(点击设置长边长度):
                 {PhotoSizeMap.map((i) => {
                   return (
@@ -609,6 +630,20 @@ function Config() {
             ) : null}
 
             <List.Item key="12">
+              <div className="title">防止纯白镂空</div>
+              <div className="describe">关闭后纯白区域可能会被镂空</div>
+              <div className="content">
+                <Switch
+                  type="round"
+                  checked={PreventWhiteHollow}
+                  onChange={(value: boolean) => {
+                    setPreventWhiteHollow(value);
+                  }}
+                />
+              </div>
+            </List.Item>
+
+            <List.Item key="13">
               <div className="title">生成dat数据</div>
               <div className="describe">检查配置无误后开始生成</div>
               <div className="content">
@@ -623,7 +658,7 @@ function Config() {
               </div>
             </List.Item>
 
-            <List.Item key="13">
+            <List.Item key="14">
               <div className="title">生成进度</div>
               <div className="describe">修改配置会清空数据缓存</div>
               <div className="content">
@@ -636,7 +671,7 @@ function Config() {
               </div>
             </List.Item>
 
-            <List.Item key="14">
+            <List.Item key="15">
               <div className="title">下载dat文件</div>
               <div className="describe">每次生成后下载新的数据文件</div>
               <div className="describe">
@@ -656,7 +691,7 @@ function Config() {
               </div>
             </List.Item>
 
-            <List.Item key="15">
+            <List.Item key="16">
               <div className="title">下载scad文件</div>
               <div className="describe">
                 修改精细度后需要下载新的scad，不修改精细度不需要更新
@@ -676,9 +711,9 @@ function Config() {
             </List.Item>
           </>
         ) : null}
+      <div className="bottom"></div>
       </List>
 
-      <div className="bottom"></div>
     </div>
   );
 }

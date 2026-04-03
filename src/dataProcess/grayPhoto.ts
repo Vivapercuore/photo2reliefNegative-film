@@ -20,8 +20,7 @@ export async function getgrayPhoto(
   base64: string,
   config: Config,
   setProgress: (n: number) => void,
-  setProgressInfo: (n: string) => void,
-  setImagePreview: (n: string) => void
+  setProgressInfo: (n: string) => void
 ): Promise<string> {
   const {
     MaxDeep,
@@ -30,6 +29,7 @@ export async function getgrayPhoto(
     MaxLength,
     Quality,
     AddBorder,
+    PreventWhiteHollow,
     BorderWidth,
     BorderHeight,
   } = config;
@@ -38,7 +38,11 @@ export async function getgrayPhoto(
   // 色深级数
   const imageDeep = 256;
   // 层数
-  const layerNumber = Math.floor((MaxDeep - BaseDeep) / LayerDeep) + 1;
+  let layerNumber = Math.floor((MaxDeep - BaseDeep) / LayerDeep) + 1;
+  // 当防白镂空启用时额外去除一层
+  if (PreventWhiteHollow) {
+    layerNumber = layerNumber - 1;
+  }
   // 单层近似亮度值
   const layerLight = imageDeep / layerNumber;
   // 缓存生成的最大层高
@@ -50,8 +54,7 @@ export async function getgrayPhoto(
   const imageData = await getImageRGBList(
     base64,
     MaxLength,
-    Quality,
-    setImagePreview
+    Quality
   );
   // const imageData = {
   //   data: [
@@ -69,6 +72,7 @@ export async function getgrayPhoto(
   setProgressInfo("生成明度图");
   setProgress(40);
   const lightMap = getLightArray(pixelRGBMap);
+    // console.error({lightMap});
 
   setProgressInfo("生成深度图");
   setProgress(60);
@@ -79,7 +83,8 @@ export async function getgrayPhoto(
     layerLight,
     LayerDeep,
     BaseDeep,
-    maxPrintDeep
+    maxPrintDeep,
+    PreventWhiteHollow
   );
 
   setProgressInfo("添加边框");

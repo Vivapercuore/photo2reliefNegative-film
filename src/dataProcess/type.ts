@@ -14,6 +14,7 @@ export interface Config {
   MaxDeep: number;
   Quality: number;
   AddBorder: boolean;
+  PreventWhiteHollow: boolean;
   BorderWidth: number;
   BorderHeight: number;
 }

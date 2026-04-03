@@ -39,7 +39,7 @@ export const getImageRGBList = async function (
   base64: string,
   MaxLength: number,
   Quality: number,
-  setImagePreview: (n: string) => void
+  setImagePreview?: (n: string) => void
 ): Promise<Uint8ClampedArray> {
   return new Promise<Uint8ClampedArray>((resolve, reject) => {
     const canvas = document.createElement("canvas") as any;
@@ -77,7 +77,9 @@ export const getImageRGBList = async function (
         canvas.width,
         canvas.height
       );
-      setImagePreview(canvas.toDataURL());
+      if (setImagePreview) {
+        setImagePreview(canvas.toDataURL());
+      }
 
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       resolve(imageData);
@@ -135,6 +137,7 @@ export function toDataDeepMap(
   LayerDeep: number,
   BaseDeep: number,
   maxPrintDeep: { value: number },
+  PreventWhiteHollow:boolean = false,
   cmyk: boolean = false,
   deepK = false
 ) {
@@ -150,6 +153,7 @@ export function toDataDeepMap(
             LayerDeep,
             BaseDeep,
             maxPrintDeep,
+            PreventWhiteHollow,
             cmyk,
             deepK
           )
@@ -169,6 +173,7 @@ export const getDeep = function (
   LayerDeep: number,
   BaseDeep: number,
   maxPrintDeep: { value: number },
+  PreventWhiteHollow:boolean = false,
   cmyk: boolean = false,
   deepK = false // addTopAndBottomFace
 ) {
@@ -198,6 +203,10 @@ export const getDeep = function (
     )
       .toFixed(2)
       .toString();
+  }
+  if (PreventWhiteHollow) {
+    deep = (Number(deep)+LayerDeep).toFixed(2)
+    .toString();
   }
   if (deepK) {
     // 添加顶面和底面
@@ -372,13 +381,13 @@ export function getCMYKHeightArray(
  * 计算其比差值，应用到整个CMYdeep
  */
 export function getfinalHeightArray(cmykMap: CmkydeepMap, lightmap: DeepMap) {
-  const cmykDeepMak = cloneDeep(cmykMap.k);
+  const cmykDeepMak = cloneDeep(cmykMap) ;
   // 最大压缩比例
   let maxCompressionRatio = 1
   // 合成最终k层高度
-  lightmap.map((line, lineIndex) => {  // 每行扫描
+  lightmap.forEach((line, lineIndex) => {  // 每行扫描
     // 逐个像素比对
-    line.map((pix, index) => {
+    line.forEach((pix, index) => {
       //等效明度
       const cmydeep = cmykMap.k[lineIndex][index]; // cmy 的掩蔽高度
       //获得明度压缩比
@@ -391,9 +400,9 @@ export function getfinalHeightArray(cmykMap: CmkydeepMap, lightmap: DeepMap) {
     });
   });
 
-  lightmap.map((line, lineIndex) => {  // 每行扫描
+  lightmap.forEach((line, lineIndex) => {  // 每行扫描
     // 逐个像素比对
-    line.map((pix, index) => {
+    line.forEach((pix, index) => {
       // cmy用maxCompressionRatio压缩一下
       cmykDeepMak.c[lineIndex][index] = cmykMap.c[lineIndex][index] / maxCompressionRatio
       cmykDeepMak.m[lineIndex][index] = cmykMap.m[lineIndex][index] / maxCompressionRatio
