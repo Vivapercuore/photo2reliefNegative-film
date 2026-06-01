@@ -7,6 +7,7 @@
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import "./config.css";
 import {
   List,
@@ -41,6 +42,7 @@ enum PresetMode {
 // 删除原来的 PhotoSizeMap 定义
 
 function Config() {
+  const navigate = useNavigate();
   const [Preset, setPreset] = useState(PresetMode.default);
   useEffect(() => {
     if (Preset === PresetMode.default) {
@@ -313,6 +315,12 @@ function Config() {
 
   return (
     <div className="config">
+      <div className="page-nav">
+        <Button type="text" size="small" onClick={() => navigate('/')}>
+          ← 返回首页
+        </Button>
+        <span className="page-nav-title">照片转浮雕负片</span>
+      </div>
       {/* <h3 className="header sticky">test</h3> */}
 
       <List className="list" size={"large"} header="填写参数生成数据文件">

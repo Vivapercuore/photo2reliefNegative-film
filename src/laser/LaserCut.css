@@ -1,0 +1,198 @@
+.laser {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.laser .page-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--color-border, #333);
+  flex: 0 0 auto;
+}
+
+.laser .page-nav-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.laser-body {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+}
+
+.laser-panel {
+  width: 460px;
+  max-width: 46%;
+  overflow-y: auto;
+  padding: 12px;
+  box-sizing: border-box;
+  border-right: 1px solid var(--color-border, #333);
+}
+
+.laser-viewer {
+  flex: 1 1 auto;
+  position: relative;
+  min-width: 0;
+}
+
+.laser-spin,
+.laser-spin > .arco-spin-children {
+  width: 100%;
+  height: 100%;
+}
+
+.laser-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.laser-empty {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--color-text-3, #999);
+}
+
+.laser .title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.laser .describe {
+  color: var(--color-text-3, #999);
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.laser-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.laser-plate-list {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--color-text-2, #bbb);
+  line-height: 1.7;
+}
+
+.laser-plate-row {
+  white-space: nowrap;
+}
+
+.laser-export-sub {
+  font-weight: 600;
+  margin: 16px 0 6px;
+  font-size: 14px;
+}
+
+.laser-export-sub:first-of-type {
+  margin-top: 8px;
+}
+
+.laser-plate-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+
+.laser-engrave-params {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.laser-param {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.laser-param > span:first-child {
+  min-width: 64px;
+}
+
+.laser-param-hint {
+  color: var(--color-text-3, #999);
+  font-size: 12px;
+}
+
+.laser-energy-box {
+  background: var(--color-fill-2, #2a2a2a);
+  border-radius: 4px;
+  padding: 8px 10px;
+  line-height: 1.7;
+  margin-bottom: 10px;
+}
+
+/* Lighter, more compact process table */
+.laser-proc-table .arco-table-th {
+  background: var(--color-fill-2, #2a2a2a);
+  font-weight: 500;
+}
+
+.laser-proc-table .arco-table-th,
+.laser-proc-table .arco-table-td {
+  padding: 4px 8px;
+  font-size: 12px;
+  border-color: var(--color-border-1, rgba(255, 255, 255, 0.08));
+}
+
+.laser-proc-table .arco-table-container,
+.laser-proc-table .arco-table-border .arco-table-cell {
+  border-color: var(--color-border-1, rgba(255, 255, 255, 0.08));
+}
+
+/* Trim the Collapse content padding so the table isn't indented far right */
+.laser-proc-collapse .arco-collapse-item-content {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.laser-proc-collapse .arco-collapse-item-content-box {
+  padding: 8px 0;
+}
+
+.laser-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.laser-quick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+  color: var(--color-text-2, #bbb);
+}
+
+@media (max-width: 900px) {
+  .laser-body {
+    flex-direction: column;
+  }
+  .laser-panel {
+    width: 100%;
+    max-width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--color-border, #333);
+  }
+  .laser-viewer {
+    min-height: 360px;
+  }
+}

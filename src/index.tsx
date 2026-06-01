@@ -5,6 +5,18 @@ import App from './App';
 import reportWebVitals from './reportWebVitals';
 import "@arco-design/web-react/dist/css/arco.css";
 
+// "ResizeObserver loop completed with undelivered notifications" is a benign
+// browser notice (no event is lost, nothing breaks). CRA's dev error overlay
+// otherwise surfaces it as an uncaught runtime error. Swallow just this one
+// message so it doesn't trigger the red overlay; everything else is untouched.
+const RESIZE_OBSERVER_MSG = 'ResizeObserver loop';
+window.addEventListener('error', (e) => {
+  if (e.message && e.message.includes(RESIZE_OBSERVER_MSG)) {
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  }
+});
+
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement
 );

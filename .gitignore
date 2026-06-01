@@ -22,3 +22,9 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# local tooling / harness config
+/.claude
+
+# large sample laser-cut files (kept locally, not versioned)
+/laser-knife-cut-demo
