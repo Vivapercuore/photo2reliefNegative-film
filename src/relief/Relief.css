@@ -1,0 +1,126 @@
+.relief {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.relief .page-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--color-border, #333);
+  flex: 0 0 auto;
+}
+
+.relief .page-nav-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.relief-body {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+}
+
+.relief-panel {
+  width: 460px;
+  max-width: 46%;
+  overflow-y: auto;
+  padding: 12px;
+  box-sizing: border-box;
+  border-right: 1px solid var(--color-border, #333);
+}
+
+.relief-viewer {
+  flex: 1 1 auto;
+  position: relative;
+  min-width: 0;
+}
+
+.relief-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.relief-empty {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--color-text-3, #999);
+}
+
+.relief .title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.relief .describe {
+  color: var(--color-text-3, #999);
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.relief-input-img {
+  width: 100%;
+  max-height: 30vh;
+  object-fit: contain;
+  border: 1px solid var(--color-border, #333);
+  border-radius: 4px;
+}
+
+.relief-size-tag {
+  margin: 4px;
+  cursor: pointer;
+}
+
+.relief-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.relief-border-params {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.relief-param {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.relief-param > span:first-child {
+  min-width: 64px;
+}
+
+.relief-param-hint {
+  color: var(--color-text-3, #999);
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .relief-body {
+    flex-direction: column;
+  }
+  .relief-panel {
+    width: 100%;
+    max-width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--color-border, #333);
+  }
+  .relief-viewer {
+    min-height: 360px;
+  }
+}

@@ -13,7 +13,7 @@ interface FeatureItem {
 const features: FeatureItem[] = [
   {
     title: '照片转浮雕负片',
-    description: '将照片转换为3D浮雕深度数据(.dat)和OpenSCAD模型文件(.scad)，用于3D打印制作照片浮雕负片。',
+    description: '上传照片，浏览器内实时生成可预览、可下载(STL)的3D浮雕负片模型，直接切片打印，无需 OpenSCAD。',
     path: '/photo2relief',
     icon: '🖨️',
   },
