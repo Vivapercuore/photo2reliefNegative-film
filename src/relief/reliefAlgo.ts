@@ -66,7 +66,14 @@ export function getDeep(
   return Number((Number(deep) * 100).toFixed(2)); // ×100 to dodge float error
 }
 
-/** Luminance map → depth map (×100), Y-flipped to match dataTools. */
+/**
+ * Luminance map → depth map (×100).
+ *
+ * Row order is kept identical to the source image (row 0 = top), so the
+ * generated solid and preview match the photo's orientation directly. The
+ * legacy `.reverse()` here was paired with a 180° rotateY in the viewer; that
+ * pair left a residual horizontal mirror, so both were removed.
+ */
 export function toDataDeepMap(
   lightArray: DeepMap,
   imageDeep: number,
@@ -77,13 +84,11 @@ export function toDataDeepMap(
   maxPrintDeep: { value: number },
   PreventWhiteHollow = false
 ): DeepMap {
-  return lightArray
-    .map((line) =>
-      line.map((i) =>
-        getDeep(i, imageDeep, layerNumber, layerLight, LayerDeep, BaseDeep, maxPrintDeep, PreventWhiteHollow)
-      )
+  return lightArray.map((line) =>
+    line.map((i) =>
+      getDeep(i, imageDeep, layerNumber, layerLight, LayerDeep, BaseDeep, maxPrintDeep, PreventWhiteHollow)
     )
-    .reverse();
+  );
 }
 
 /** Add a border frame around the depth map (matches dataTools). */

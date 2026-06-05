@@ -52,6 +52,14 @@
   height: 100%;
 }
 
+/* Preview mode toggle pinned to the top-right of the whole preview area */
+.laser-view-toggle {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+}
+
 .laser-empty {
   width: 100%;
   height: 100%;
@@ -156,6 +164,24 @@
   border-color: var(--color-border-1, rgba(255, 255, 255, 0.08));
 }
 
+/* Toggle above the process table for the engrave color hint */
+.laser-proc-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-2, #c9c9c9);
+  margin-bottom: 8px;
+}
+
+/* Let the per-row color outline show fully (cells must not paint over it) */
+.laser-proc-table .arco-table-tr {
+  position: relative;
+}
+.laser-proc-table .arco-table-td {
+  background: transparent;
+}
+
 /* Trim the Collapse content padding so the table isn't indented far right */
 .laser-proc-collapse .arco-collapse-item-content {
   padding-left: 0;
@@ -180,6 +206,14 @@
   margin-top: 12px;
   flex-wrap: wrap;
   color: var(--color-text-2, #bbb);
+}
+
+.laser-quick-presets {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
 }
 
 @media (max-width: 900px) {

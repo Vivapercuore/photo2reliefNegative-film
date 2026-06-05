@@ -26,6 +26,10 @@ export interface ReliefDone {
   triangles: number;
   cols: number;
   rows: number;
+  /** Grayscale preview of the image area by actual depth levels (1 byte/pixel). */
+  preview: Uint8Array;
+  previewWidth: number;
+  previewHeight: number;
 }
 
 export interface ReliefError {
@@ -103,6 +107,20 @@ self.onmessage = (e: MessageEvent<ReliefRequest>) => {
       PreventWhiteHollow
     );
 
+    // Grayscale preview from the actual quantized depth levels (before border):
+    // normalize by the configured max thickness; thick = dark, thin = light.
+    const previewHeight = deepMap.length;
+    const previewWidth = previewHeight > 0 ? deepMap[0].length : 0;
+    const preview = new Uint8Array(previewWidth * previewHeight);
+    const maxDeepValue = MaxDeep * 100;
+    for (let y = 0; y < previewHeight; y++) {
+      const row = deepMap[y];
+      for (let x = 0; x < previewWidth; x++) {
+        const normalized = Math.round((row[x] / maxDeepValue) * 255);
+        preview[y * previewWidth + x] = 255 - Math.max(0, Math.min(255, normalized));
+      }
+    }
+
     progress(78, '添加边框');
     const withBorder = generateBorder(deepMap, AddBorder, BorderWidth, BorderHeight, Quality);
 
@@ -118,8 +136,11 @@ self.onmessage = (e: MessageEvent<ReliefRequest>) => {
         triangles: hf.triangles,
         cols: hf.cols,
         rows: hf.rows,
+        preview,
+        previewWidth,
+        previewHeight,
       },
-      [hf.positions.buffer]
+      [hf.positions.buffer, preview.buffer]
     );
   } catch (err: any) {
     post({ type: 'error', message: err?.message || String(err) });

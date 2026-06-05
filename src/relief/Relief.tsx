@@ -19,7 +19,7 @@ import './Relief.css';
 import { Config } from '../dataProcess/type';
 import { PhotoSizeMap } from '../constants';
 import ModelViewer from '../laser/viewer/ModelViewer';
-import { exportBinarySTL } from '../laser/export/exportStl';
+import { pack3mf, BambuTemplate, Pack3mfOptions } from '../export/bambu/build3mf';
 import type { ReliefRequest, ReliefResponse } from './worker/relief.worker';
 
 const RadioGroup = Radio.Group;
@@ -30,6 +30,30 @@ enum PresetMode {
   speed = 'speed',
   custom = 'custom',
 }
+
+/** Base print preset → its template folder, short label, and nozzle diameter. */
+const PRESET_INFO = {
+  precision: { template: 'relief/precision' as BambuTemplate, label: '细腻', nozzle: '0.2' },
+  default: { template: 'relief/default' as BambuTemplate, label: '标准', nozzle: '0.4' },
+  speed: { template: 'relief/speed' as BambuTemplate, label: '快速', nozzle: '0.4' },
+};
+
+/** Sanitize an uploaded file name for use as a download base name. */
+function safeBaseName(name: string): string {
+  return (
+    name
+      .replace(/\.[^.]+$/, '') // drop extension
+      .replace(/[\\/:*?"<>|]+/g, '_')
+      .trim() || 'relief'
+  );
+}
+
+const PRESET_LABEL: Record<PresetMode, string> = {
+  [PresetMode.precision]: '细腻配置',
+  [PresetMode.default]: '标准设置',
+  [PresetMode.speed]: '快速模式',
+  [PresetMode.custom]: '自定义（层高已同步到工艺）',
+};
 
 function saveBlob(data: BlobPart, filename: string) {
   const blob = new Blob([data]);
@@ -72,6 +96,7 @@ const Relief: React.FC = () => {
   }, [preset]);
 
   const [imageUrl, setImageUrl] = useState('');
+  const [fileName, setFileName] = useState('');
   const bitmapSrcRef = useRef<File | null>(null);
   const [imgSize, setImgSize] = useState({ width: 0, height: 0 });
 
@@ -82,6 +107,8 @@ const Relief: React.FC = () => {
   const workerRef = useRef<Worker | null>(null);
   const meshRef = useRef<THREE.Mesh | null>(null);
   const geomRef = useRef<THREE.BufferGeometry | null>(null);
+  const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [hasPreview, setHasPreview] = useState(false);
   const [viewObject, setViewObject] = useState<THREE.Object3D | null>(null);
   const [stats, setStats] = useState<{ triangles: number; size: { x: number; y: number; z: number } } | null>(
     null
@@ -110,9 +137,34 @@ const Relief: React.FC = () => {
     }
   }, []);
 
+  // Paint the worker's grayscale depth-level preview onto the panel canvas.
+  const renderPreview = useCallback((preview: Uint8Array, width: number, height: number) => {
+    const canvas = previewCanvasRef.current;
+    if (!canvas || !width || !height) {
+      setHasPreview(false);
+      return;
+    }
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const img = ctx.createImageData(width, height);
+    for (let i = 0; i < preview.length; i++) {
+      const g = preview[i];
+      const idx = i * 4;
+      img.data[idx] = g;
+      img.data[idx + 1] = g;
+      img.data[idx + 2] = g;
+      img.data[idx + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    setHasPreview(true);
+  }, []);
+
   // file upload → data URL + intrinsic size
   const onFile = useCallback((file: File) => {
     bitmapSrcRef.current = file;
+    setFileName(file.name);
     const reader = new FileReader();
     reader.onload = (ev) => {
       const url = ev.target?.result as string;
@@ -161,10 +213,6 @@ const Relief: React.FC = () => {
         disposeView();
         const geom = new THREE.BufferGeometry();
         geom.setAttribute('position', new THREE.BufferAttribute(msg.positions, 3));
-        // The depth map is Y-reversed during quantization, which leaves the
-        // model rotated 180° from the source photo in the XZ plane. Rotate
-        // about the vertical axis so preview AND exported STL match the photo.
-        geom.rotateY(Math.PI);
         geom.computeVertexNormals();
         geomRef.current = geom;
         const material = new THREE.MeshStandardMaterial({
@@ -181,6 +229,7 @@ const Relief: React.FC = () => {
         group.add(mesh);
         setViewObject(group);
         setStats({ triangles: msg.triangles, size: msg.size });
+        renderPreview(msg.preview, msg.previewWidth, msg.previewHeight);
         setBuilding(false);
       }
     };
@@ -189,7 +238,7 @@ const Relief: React.FC = () => {
       workerRef.current = null;
       disposeView();
     };
-  }, [disposeView]);
+  }, [disposeView, renderPreview]);
 
   // trigger recompute when image or params change
   useEffect(() => {
@@ -220,19 +269,75 @@ const Relief: React.FC = () => {
     runWorker,
   ]);
 
-  const onExport = useCallback(() => {
-    if (!geomRef.current) {
+  const [exporting, setExporting] = useState(false);
+
+  // Export a Bambu .3mf carrying the selected preset's 工艺参数 + 项目信息.
+  const onExport3mf = useCallback(async () => {
+    const geom = geomRef.current;
+    if (!geom) {
       Message.warning('请先上传图片并生成模型');
       return;
     }
+    const isCustom = preset === PresetMode.custom;
+    // Pick the base preset. Custom chooses by single-layer height: a fine layer
+    // (≤0.06) belongs to the 0.2-nozzle 细腻 base, otherwise the 0.4-nozzle 标准.
+    const base =
+      preset === PresetMode.precision
+        ? PRESET_INFO.precision
+        : preset === PresetMode.speed
+        ? PRESET_INFO.speed
+        : preset === PresetMode.default
+        ? PRESET_INFO.default
+        : LayerDeep <= 0.06
+        ? PRESET_INFO.precision
+        : PRESET_INFO.default;
+
+    setExporting(true);
     try {
-      const buf = exportBinarySTL([geomRef.current]);
-      saveBlob(buf, 'photo-relief.stl');
-      Message.success('STL 已导出');
+      // Custom: force print layer height to the geometry's layers, mark it as
+      // modified, and neutralise the profile-level identity (keep model-level).
+      const options: Pack3mfOptions = isCustom
+        ? {
+            projectSettingsOverrides: {
+              layer_height: String(LayerDeep),
+              initial_layer_print_height: String(BaseDeep),
+            },
+            markModified: ['layer_height', 'initial_layer_print_height'],
+            metadataOverrides: {
+              ProfileTitle: `自定义（基于${base.label}配置）`,
+              // Keep the base preset's DesignProfileId (link to the nearest
+              // published profile), but regenerate ProfileDescription so it
+              // matches the actual custom parameters instead of the base's.
+              // Values are single-escaped HTML; escapeXml double-escapes them
+              // to match how Bambu stores ProfileDescription.
+              ProfileDescription:
+                `&lt;p&gt;${LayerDeep}mm 层高&lt;/p&gt;` +
+                `&lt;p&gt;${BaseDeep}mm 首层&lt;/p&gt;` +
+                `&lt;p&gt;100%充填&lt;/p&gt;` +
+                `&lt;p&gt;自定义参数（基于${base.label}配置）&lt;/p&gt;`,
+            },
+          }
+        : {};
+
+      const u8 = await pack3mf(
+        base.template,
+        [{ name: 'photo-relief', geometry: geom }],
+        undefined,
+        options
+      );
+
+      // 原图名-喷嘴直径-基准预设-是否自定义.3mf
+      const fname = `${safeBaseName(fileName)}-${base.nozzle}mm-${base.label}-${
+        isCustom ? '自定义' : '预设'
+      }.3mf`;
+      saveBlob(u8, fname);
+      Message.success('3MF 已导出（含拓竹工艺参数与项目信息）');
     } catch (e: any) {
       Message.error(`导出失败：${e?.message || e}`);
+    } finally {
+      setExporting(false);
     }
-  }, []);
+  }, [preset, LayerDeep, BaseDeep, fileName]);
 
   const sizeText = stats
     ? `${stats.size.x.toFixed(1)} × ${stats.size.z.toFixed(1)} × ${stats.size.y.toFixed(2)} mm`
@@ -272,6 +377,20 @@ const Relief: React.FC = () => {
                   </div>
                   {/* eslint-disable-next-line jsx-a11y/alt-text */}
                   <img className="relief-input-img" src={imageUrl} />
+                  <div className="title" style={{ marginTop: 12 }}>
+                    黑白预览（按实际色阶）
+                  </div>
+                  <div className="describe">
+                    依据量化后的实际打印深度生成：越厚越暗、越薄越亮，用于预估成片明暗效果。
+                  </div>
+                  <canvas
+                    ref={previewCanvasRef}
+                    className="relief-preview-canvas"
+                    style={{ display: hasPreview ? 'block' : 'none' }}
+                  />
+                  {!hasPreview ? (
+                    <div className="describe">生成模型后将在此显示黑白预览。</div>
+                  ) : null}
                 </>
               ) : null}
             </List.Item>
@@ -469,11 +588,19 @@ const Relief: React.FC = () => {
                     成品尺寸（宽×长×厚）：{sizeText}
                     {stats ? `；三角面 ${stats.triangles.toLocaleString()}` : ''}
                   </div>
-                  <Button type="primary" size="large" long disabled={building || !stats} onClick={onExport}>
-                    导出 STL
+                  <Button
+                    type="primary"
+                    size="large"
+                    long
+                    loading={exporting}
+                    disabled={building || exporting || !stats}
+                    onClick={onExport3mf}
+                  >
+                    导出 3MF（含拓竹工艺参数 + 项目信息）
                   </Button>
                   <div className="describe" style={{ marginTop: 8 }}>
-                    直接导入切片软件即可打印，无需 OpenSCAD。
+                    已内置「{PRESET_LABEL[preset]}」打印工艺与你的 MakerWorld 项目信息，导入拓竹切片软件后
+                    无需再手动设置层高 / 填充 / 耗材；删掉示例占位、放入此模型即可打印。
                   </div>
                 </List.Item>
               </>

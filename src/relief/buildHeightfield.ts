@@ -103,45 +103,48 @@ export function buildHeightfield(deepMap: DeepMap, quality: number): Heightfield
   }
 
   // Walls along the four edges (connect top edge heights down to y=0).
-  // front edge (r = 0)
+  // Each wall is wound so its normal points OUTWARD, matching the top (+Y) and
+  // bottom (−Y) surfaces; this keeps every perimeter edge consistently oriented
+  // so the solid stays manifold (no non-manifold edges in slicers).
+  // front edge (r = 0), outward normal = −Z
   for (let c = 0; c < cols - 1; c++) {
     const x0 = px(c);
     const x1 = px(c + 1);
     const z = pz(0);
     const ya = h(0, c);
     const yb = h(0, c + 1);
-    tri(x0, 0, z, x1, 0, z, x1, yb, z);
-    tri(x0, 0, z, x1, yb, z, x0, ya, z);
+    tri(x0, 0, z, x1, yb, z, x1, 0, z);
+    tri(x0, 0, z, x0, ya, z, x1, yb, z);
   }
-  // back edge (r = rows-1)
+  // back edge (r = rows-1), outward normal = +Z
   for (let c = 0; c < cols - 1; c++) {
     const x0 = px(c);
     const x1 = px(c + 1);
     const z = pz(rows - 1);
     const ya = h(rows - 1, c);
     const yb = h(rows - 1, c + 1);
-    tri(x0, 0, z, x1, yb, z, x1, 0, z);
-    tri(x0, 0, z, x0, ya, z, x1, yb, z);
+    tri(x0, 0, z, x1, 0, z, x1, yb, z);
+    tri(x0, 0, z, x1, yb, z, x0, ya, z);
   }
-  // left edge (c = 0)
+  // left edge (c = 0), outward normal = −X
   for (let r = 0; r < rows - 1; r++) {
     const z0 = pz(r);
     const z1 = pz(r + 1);
     const x = px(0);
     const ya = h(r, 0);
     const yb = h(r + 1, 0);
-    tri(x, 0, z0, x, yb, z1, x, 0, z1);
-    tri(x, 0, z0, x, ya, z0, x, yb, z1);
+    tri(x, 0, z0, x, 0, z1, x, yb, z1);
+    tri(x, 0, z0, x, yb, z1, x, ya, z0);
   }
-  // right edge (c = cols-1)
+  // right edge (c = cols-1), outward normal = +X
   for (let r = 0; r < rows - 1; r++) {
     const z0 = pz(r);
     const z1 = pz(r + 1);
     const x = px(cols - 1);
     const ya = h(r, cols - 1);
     const yb = h(r + 1, cols - 1);
-    tri(x, 0, z0, x, 0, z1, x, yb, z1);
-    tri(x, 0, z0, x, yb, z1, x, ya, z0);
+    tri(x, 0, z0, x, yb, z1, x, 0, z1);
+    tri(x, 0, z0, x, ya, z0, x, yb, z1);
   }
 
   return {

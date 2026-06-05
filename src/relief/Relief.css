@@ -75,6 +75,16 @@
   border-radius: 4px;
 }
 
+.relief-preview-canvas {
+  width: 100%;
+  max-height: 30vh;
+  object-fit: contain;
+  image-rendering: auto;
+  background: #000;
+  border: 1px solid var(--color-border, #333);
+  border-radius: 4px;
+}
+
 .relief-size-tag {
   margin: 4px;
   cursor: pointer;

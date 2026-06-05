@@ -18,9 +18,10 @@ import * as THREE from 'three';
 import './LaserCut.css';
 
 import { parseLac, LacModel } from './lac/parseLac';
-import { buildModel, disposeBuild, BuildResult, BuildOptions } from './lac/buildMesh';
+import { buildModel, disposeBuild, BuildResult, BuildOptions, engraveColorAt } from './lac/buildMesh';
 import ModelViewer from './viewer/ModelViewer';
-import { exportBinarySTL, zipStlFiles, StlEntry } from './export/exportStl';
+import PathPreview from './viewer/PathPreview';
+import { pack3mf } from '../export/bambu/build3mf';
 
 const Option = Select.Option;
 
@@ -47,6 +48,48 @@ function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
 
 const ALL_PLATES = 0; // sentinel for "show every plate"
 
+// Minimum mm to keep both below the deepest engrave (remaining material) and
+// for the shallowest engrave (groove depth) when auto-picking the depth ratio.
+const MIN_MARGIN_MM = 0.2;
+
+/**
+ * Adjust the default depthRatio (1) for a freshly loaded model only when it
+ * would violate the safe band; otherwise keep the previous default of 1:
+ *   1. the DEEPEST engrave must leave ≥ MIN_MARGIN_MM of material (priority), and
+ *   2. the SHALLOWEST engrave must be ≥ MIN_MARGIN_MM deep.
+ * depth_i = (energy_i / cutEnergy) × ratio × thickness. Returns 1 when there's
+ * not enough info (no engraves / unknown energies / too-thin board).
+ */
+function autoDepthRatio(model: LacModel, thickness: number): number {
+  const cutEnergy =
+    model.meta.cutEnergy ??
+    model.plates
+      .flatMap((p) => p.pieces)
+      .reduce((m, pc) => (pc.process === 'cut' ? Math.max(m, pc.laser.energy ?? 0) : m), 0);
+  if (!(cutEnergy > 0) || !(thickness > 0)) return 1;
+
+  const fracs = model.processes
+    .filter((u) => u.process === 'engrave' && u.params.energy != null)
+    .map((u) => (u.params.energy as number) / cutEnergy)
+    .filter((f) => f > 0);
+  if (!fracs.length) return 1;
+
+  const fracMax = Math.max(...fracs);
+  const fracMin = Math.min(...fracs);
+  // ceiling: deepest engrave keeps ≥ MIN_MARGIN_MM of remaining material
+  const ceil = (thickness - MIN_MARGIN_MM) / (fracMax * thickness);
+  // floor: shallowest engrave is ≥ MIN_MARGIN_MM deep
+  const floor = MIN_MARGIN_MM / (fracMin * thickness);
+  if (!(ceil > 0)) return 1; // board too thin to leave any margin
+
+  // Keep the default of 1, only nudging it into the [floor, ceil] band. The
+  // deepest constraint (ceil) has priority, so it caps last.
+  let ratio = 1;
+  if (ratio < floor) ratio = floor;
+  if (ratio > ceil) ratio = ceil;
+  return Number.isFinite(ratio) && ratio > 0 ? ratio : 1;
+}
+
 const LaserCut: React.FC = () => {
   const navigate = useNavigate();
 
@@ -63,6 +106,8 @@ const LaserCut: React.FC = () => {
   const [cutHoles, setCutHoles] = useState(true);
   const [plateSel, setPlateSel] = useState<number>(ALL_PLATES);
   const [engraveAsGroove, setEngraveAsGroove] = useState(true);
+  // show the per-energy color hint on engrave marks (preview only)
+  const [showEngraveColors, setShowEngraveColors] = useState(true);
   // Groove depth/width are derived from each path's laser energy density
   // (power/speed); these ratios scale that physical estimate.
   const [depthRatio, setDepthRatio] = useState(1);
@@ -70,16 +115,24 @@ const LaserCut: React.FC = () => {
 
   const buildRef = useRef<BuildResult | null>(null);
   const [viewObject, setViewObject] = useState<THREE.Object3D | null>(null);
-  const [stats, setStats] = useState<{ triangles: number; size: { x: number; y: number; z: number } } | null>(
-    null
-  );
+  // which preview to show on the right: 3D model or flat 2D path view
+  const [viewMode, setViewMode] = useState<'3d' | '2d'>('3d');
+  const [stats, setStats] = useState<{
+    triangles: number;
+    size: { x: number; y: number; z: number };
+    /** largest single part footprint, in ORIGINAL (unscaled) mm */
+    largestPart: { x: number; y: number; maxEdge: number };
+  } | null>(null);
 
   const reparse = useCallback((bytes: Uint8Array) => {
     try {
       const m = parseLac(bytes);
       setModel(m);
       setPlateSel(ALL_PLATES);
+      const th = m.meta.thicknessMm ?? thickness;
       if (m.meta.thicknessMm) setThickness(m.meta.thicknessMm);
+      // Auto-pick a depth ratio that keeps engrave grooves in a safe band.
+      setDepthRatio(autoDepthRatio(m, th));
       m.warnings.forEach((w) => Message.warning(w));
       const totalPieces = m.plates.reduce((s, p) => s + p.pieces.length, 0);
       Message.success(`解析成功：${m.plates.length} 个盘，共 ${totalPieces} 个零件`);
@@ -87,7 +140,7 @@ const LaserCut: React.FC = () => {
       setModel(null);
       Message.error(`解析失败：${e?.message || e}`);
     }
-  }, []);
+  }, [thickness]);
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -122,6 +175,7 @@ const LaserCut: React.FC = () => {
       flipY,
       cutHoles,
       engraveAsGroove,
+      showEngraveColors,
       depthRatio,
       widthRatio,
       onlyPlate: plateSel === ALL_PLATES ? undefined : plateSel,
@@ -132,7 +186,7 @@ const LaserCut: React.FC = () => {
         const result = buildModel(model, opts);
         buildRef.current = result;
         setViewObject(result.group);
-        setStats({ triangles: result.triangleCount, size: result.size });
+        setStats({ triangles: result.triangleCount, size: result.size, largestPart: result.largestPart });
       } catch (e: any) {
         Message.error(`生成模型失败：${e?.message || e}`);
       } finally {
@@ -140,7 +194,7 @@ const LaserCut: React.FC = () => {
       }
     }, 60);
     return () => clearTimeout(timer);
-  }, [model, thickness, scale, flipY, cutHoles, plateSel, engraveAsGroove, depthRatio, widthRatio]);
+  }, [model, thickness, scale, flipY, cutHoles, plateSel, engraveAsGroove, showEngraveColors, depthRatio, widthRatio]);
 
   // dispose on unmount
   useEffect(
@@ -155,95 +209,70 @@ const LaserCut: React.FC = () => {
     [model, fileName]
   );
 
-  // Export every built plate as its own STL, packed into a single zip.
-  const onExportZip = useCallback(() => {
-    const build = buildRef.current;
-    if (!build || !build.plates.length) {
-      Message.warning('请先上传并生成模型');
-      return;
-    }
+  const [exporting, setExporting] = useState(false);
+
+  // Carry the .lac project info (title / designer / material) into the 3MF.
+  const projectMeta = useMemo(
+    () => ({
+      title: model?.meta.title || baseName,
+      designer: model?.meta.designer,
+      description: model?.meta.material ? `激光刀切转 3D · ${model.meta.material}` : undefined,
+    }),
+    [model, baseName]
+  );
+
+  // Each .lac plate → its own print plate (bed). Within a plate every piece is
+  // welded as an independent solid, so touching parts stay manifold.
+  const onExportAll = useCallback(async () => {
+    if (!model) return;
+    let temp: BuildResult | null = null;
+    setExporting(true);
     try {
-      const entries: StlEntry[] = build.plates
-        .filter((p) => p.geometries.length)
-        .map((p) => ({
-          name: `${baseName}_盘${p.index}`,
-          data: exportBinarySTL(p.geometries),
-        }));
-      if (!entries.length) {
+      // Always export every plate: reuse the current build only if it already
+      // holds all plates, otherwise rebuild the full layout on demand.
+      let build = buildRef.current;
+      if (!build || plateSel !== ALL_PLATES) {
+        temp = buildModel(model, {
+          thickness,
+          scale,
+          flipY,
+          cutHoles,
+          engraveAsGroove,
+          depthRatio,
+          widthRatio,
+        });
+        build = temp;
+      }
+      // One 3MF object PER PART, tagged with its print-plate index (= source
+      // .lac plate). Parts sharing a plate are auto-arranged together on one
+      // bed; emitting each part separately lets the slicer move/repack them
+      // individually and keeps each object's footprint small.
+      const objects = build.plates
+        .filter((p) => p.parts.length)
+        .flatMap((p, i) =>
+          p.parts.map((part, j) => ({
+            name: `${baseName}-盘${p.index}-件${j + 1}`,
+            geometry: part.geometries,
+            plate: i + 1,
+          }))
+        );
+      if (!objects.length) {
         Message.warning('没有可导出的几何');
         return;
       }
-      if (entries.length === 1) {
-        saveBlob(entries[0].data, `${entries[0].name}.stl`);
-      } else {
-        const zip = zipStlFiles(entries);
-        saveBlob(zip, `${baseName}_STL.zip`);
-      }
-      Message.success(`已导出 ${entries.length} 个 STL`);
+      const u8 = await pack3mf('laser', objects, projectMeta, {
+        bedSize: { x: 256, y: 256 },
+      });
+      saveBlob(u8, `${baseName}.3mf`);
+      const plateCount = build.plates.filter((p) => p.parts.length).length;
+      Message.success(`已导出 ${objects.length} 个零件，分布在 ${plateCount} 个打印盘`);
     } catch (e: any) {
       Message.error(`导出失败：${e?.message || e}`);
+    } finally {
+      if (temp) disposeBuild(temp);
+      setExporting(false);
     }
-  }, [baseName]);
-
-  // Export only the current view as a single STL.
-  const onExportSingle = useCallback(() => {
-    const build = buildRef.current;
-    if (!build || !build.geometries.length) {
-      Message.warning('请先上传并生成模型');
-      return;
-    }
-    try {
-      const buf = exportBinarySTL(build.geometries);
-      const suffix = plateSel === ALL_PLATES ? '全部' : `盘${plateSel}`;
-      saveBlob(buf, `${baseName}_${suffix}.stl`);
-      Message.success('STL 已导出');
-    } catch (e: any) {
-      Message.error(`导出失败：${e?.message || e}`);
-    }
-  }, [baseName, plateSel]);
-
-  // Export one specific plate as a single STL (by plate index). Works in any
-  // view: if that plate isn't in the current build, build it on demand.
-  const onExportOnePlate = useCallback(
-    (index: number) => {
-      if (!model) return;
-      try {
-        let geoms = buildRef.current?.plates.find((p) => p.index === index)?.geometries;
-        let temp: BuildResult | null = null;
-        if (!geoms || !geoms.length) {
-          temp = buildModel(model, {
-            thickness,
-            scale,
-            flipY,
-            cutHoles,
-            engraveAsGroove,
-            depthRatio,
-            widthRatio,
-            onlyPlate: index,
-          });
-          geoms = temp.geometries;
-        }
-        if (!geoms.length) {
-          Message.warning(`盘 ${index} 没有可导出的几何`);
-          if (temp) disposeBuild(temp);
-          return;
-        }
-        const buf = exportBinarySTL(geoms);
-        saveBlob(buf, `${baseName}_盘${index}.stl`);
-        if (temp) disposeBuild(temp);
-        Message.success(`盘 ${index} 已导出`);
-      } catch (e: any) {
-        Message.error(`导出失败：${e?.message || e}`);
-      }
-    },
-    [model, baseName, thickness, scale, flipY, cutHoles, engraveAsGroove, depthRatio, widthRatio]
-  );
-
-  const footprintText = useMemo(() => {
-    if (!stats) return '';
-    const { x, z } = stats.size;
-    return `${x.toFixed(0)} × ${z.toFixed(0)} mm`;
-  }, [stats]);
+  }, [model, baseName, plateSel, projectMeta, thickness, scale, flipY, cutHoles, engraveAsGroove, depthRatio, widthRatio]);
 
   const engraveCount = useMemo(
     () =>
@@ -295,13 +324,15 @@ const LaserCut: React.FC = () => {
     // by the depth/width ratios.
     return model.processes
       .filter((u) => u.process === 'engrave')
-      .map((u) => {
+      .map((u, i) => {
         const e = u.params.energy;
         const frac = e != null && cutEnergy > 0 ? e / cutEnergy : 0.3;
         const depthMm = Math.min(thickness * 0.95, frac * depthRatio * thickness) * scale;
         const widthMm = Math.max(0.05, (e != null ? e : 0.6) * widthRatio) * scale;
         return {
           key: u.params.processType,
+          // color tagging this energy — matches the painted top face on the model
+          color: engraveColorAt(i),
           power: u.params.power ?? null,
           speed: u.params.speed ?? null,
           energy: e ?? null,
@@ -313,10 +344,12 @@ const LaserCut: React.FC = () => {
   }, [model, thickness, scale, depthRatio, widthRatio]);
 
   const setMaxEdge = (v: number) => {
-    if (!model || !v) return;
-    // base scaling on the largest single plate edge so a plate fits the target
-    const maxEdge =
-      Math.max(...model.plates.flatMap((p) => [p.bbox.width, p.bbox.height]), 1) || 1;
+    if (!v) return;
+    // Scale so the LARGEST single PART's longest edge hits the target length.
+    // largestPart is in original (unscaled) mm, so the ratio is independent of
+    // the current scale.
+    const maxEdge = stats?.largestPart.maxEdge || 0;
+    if (maxEdge <= 0) return;
     setScale(Number((v / maxEdge).toFixed(4)));
   };
 
@@ -430,10 +463,16 @@ const LaserCut: React.FC = () => {
                     1.0 = 文件中的原始物理尺寸（单位 mm）。例如设为 0.5，则成品缩到一半（厚度也减半）。
                   </div>
                   <div className="describe">
-                    当前缩放后：单盘约 {(Math.max(...model.plates.map((p) => p.bbox.width)) * scale).toFixed(0)} ×{' '}
-                    {(Math.max(...model.plates.map((p) => p.bbox.height)) * scale).toFixed(0)} mm，
-                    厚度 {(thickness * scale).toFixed(2)} mm；整体视图占地 {footprintText || '—'}。
+                    当前缩放后厚度 {(thickness * scale).toFixed(2)} mm。
                   </div>
+                  {stats && stats.largestPart.maxEdge > 0 ? (
+                    <div className="describe">
+                      <strong>最大零件</strong>（决定能否放入打印幅面）：约{' '}
+                      {(stats.largestPart.x * scale).toFixed(1)} ×{' '}
+                      {(stats.largestPart.y * scale).toFixed(1)} mm，最大边{' '}
+                      {(stats.largestPart.maxEdge * scale).toFixed(1)} mm。
+                    </div>
+                  ) : null}
                   <InputNumber
                     style={{ width: 200 }}
                     size="large"
@@ -447,19 +486,37 @@ const LaserCut: React.FC = () => {
                     onChange={(v: number) => setScale(v)}
                   />
                   <div className="laser-quick">
-                    <span>或：把单盘最大边缩放到指定长度 (mm)：</span>
+                    <span>或：把最大零件的最大边缩放到指定长度 (mm)：</span>
                     <InputNumber
                       style={{ width: 160 }}
                       min={1}
                       max={2000}
                       step={10}
                       precision={1}
-                      placeholder="例如 300"
+                      placeholder="例如 200"
+                      disabled={!stats || stats.largestPart.maxEdge <= 0}
                       onChange={(v: number) => setMaxEdge(v)}
                     />
                   </div>
+                  <div className="laser-quick-presets">
+                    {[
+                      { label: 'H2', mm: 320 },
+                      { label: 'X1', mm: 256 },
+                      { label: 'A1 mini', mm: 180 },
+                    ].map((p) => (
+                      <Button
+                        key={p.label}
+                        size="small"
+                        disabled={!stats || stats.largestPart.maxEdge <= 0}
+                        onClick={() => setMaxEdge(p.mm)}
+                      >
+                        {p.label}：{p.mm}mm
+                      </Button>
+                    ))}
+                  </div>
                   <div className="describe" style={{ marginTop: 6 }}>
-                    输入目标长度会自动换算缩放倍数，方便把整盘缩放到你的打印/切割幅面。
+                    输入目标长度会自动换算缩放倍数，使<strong>最大的单个零件</strong>正好缩放到该尺寸，
+                    确保所有零件都能放进你的打印/切割幅面。
                   </div>
                 </List.Item>
 
@@ -471,7 +528,9 @@ const LaserCut: React.FC = () => {
                   </div>
                   <div className="describe">
                     开启时，零件内部的封闭轮廓会被识别为镂空（如齿轮中心孔、卡槽），生成真正带孔的实体——
-                    这通常是你想要的。关闭则把每条轮廓都当作独立实心片，内孔会被填平，仅在孔洞识别异常时用于排查。
+                    这通常是你想要的。关闭时<strong>不会填平内孔</strong>，而是把每个内孔轮廓也当作一个
+                    独立的实心零件单独拆出（外圈仍保留孔洞），便于把内外件分别摆盘、分件打印。
+                    <strong>但这会需要你自行删除空洞中多余的实体</strong>
                   </div>
                   <div className="laser-switch" style={{ marginTop: 12 }}>
                     <Switch checked={flipY} onChange={(v: boolean | string | number) => setFlipY(Boolean(v))} />{' '}
@@ -554,6 +613,18 @@ const LaserCut: React.FC = () => {
                       </div>
                     ) : null}
 
+                    <div className="laser-switch" style={{ marginTop: 12 }}>
+                      <Switch
+                        checked={showEngraveColors}
+                        onChange={(v: boolean | string | number) => setShowEngraveColors(Boolean(v))}
+                      />{' '}
+                      <span>雕刻线颜色提示</span>
+                    </div>
+                    <div className="describe">
+                      按能量为每种雕刻工艺着色，模型表面与下方参数表用同色标记，便于对照辨认。
+                      仅影响预览着色，不改变导出的实体几何。
+                    </div>
+
                     {processRows.length ? (
                       <Collapse bordered={false} style={{ marginTop: 12 }} className="laser-proc-collapse">
                         <Collapse.Item
@@ -566,6 +637,14 @@ const LaserCut: React.FC = () => {
                             border={{ wrapper: true, cell: false }}
                             pagination={false}
                             data={processRows}
+                            onRow={(record: any) => ({
+                              style: showEngraveColors
+                                ? {
+                                    outline: `2px solid ${record.color}`,
+                                    outlineOffset: '-2px',
+                                  }
+                                : undefined,
+                            })}
                             columns={[
                               {
                                 title: '功率',
@@ -600,50 +679,27 @@ const LaserCut: React.FC = () => {
                 ) : null}
 
                 <List.Item key="export">
-                  <div className="title">导出 STL</div>
+                  <div className="title">导出 3MF</div>
                   <div className="describe">
-                    导出标准二进制 STL，可直接导入切片软件 / 3D 打印或 CNC。导出的模型与左侧设置（厚度、缩放、
-                    孔洞、翻转）完全一致。当前视图三角面：{stats ? stats.triangles.toLocaleString() : '生成中…'}。
+                    导出 3MF（，可直接导入拓竹切片软件 打印。
+                    导出的模型与左侧设置（厚度、缩放、孔洞、翻转）完全一致。当前视图三角面：
+                    {stats ? stats.triangles.toLocaleString() : '生成中…'}。
                   </div>
 
-                  <div className="laser-export-sub">按盘单独下载</div>
-                  <div className="describe">每张盘各自生成一个 STL 文件，便于逐盘打印 / 切割。</div>
-                  <div className="laser-plate-btns">
-                    {model.plates.map((p) => (
-                      <Button
-                        key={p.index}
-                        size="default"
-                        disabled={building}
-                        onClick={() => onExportOnePlate(p.index)}
-                      >
-                        盘 {p.index} STL
-                      </Button>
-                    ))}
-                  </div>
-
-                  <div className="laser-export-sub">批量 / 合并</div>
                   <Button
                     type="primary"
                     size="large"
                     long
-                    disabled={building}
-                    onClick={onExportZip}
-                    style={{ marginBottom: 10 }}
+                    loading={exporting}
+                    disabled={building || exporting}
+                    onClick={onExportAll}
                   >
-                    全部盘打包下载（{model.plates.length} 个 STL · zip）
+                    下载3MF
                   </Button>
-                  <div className="describe">把所有盘的 STL 一次性打包成一个 zip 下载。</div>
-                  <Button
-                    size="large"
-                    long
-                    disabled={building}
-                    onClick={onExportSingle}
-                    style={{ marginTop: 10 }}
-                  >
-                    {plateSel === ALL_PLATES ? '当前视图合并为单个 STL' : `仅导出盘 ${plateSel}（单文件）`}
-                  </Button>
-                  <div className="describe">
-                    把当前预览的内容合并成一个 STL：选“全部盘”时所有盘合为一体，选单盘时即该盘。
+                  <div className="describe" style={{ marginTop: 8 }}>
+                    每个零件导出为一个<strong>独立的对象/实体</strong>
+                    可能需要自行点击自动摆盘
+                    若某零件超过机器幅面，请用上方缩放把最大零件缩到幅面内。
                   </div>
                 </List.Item>
               </>
@@ -652,13 +708,47 @@ const LaserCut: React.FC = () => {
         </div>
 
         <div className="laser-viewer">
-          <Spin loading={building} tip="生成模型中…" className="laser-spin">
-            {viewObject ? (
-              <ModelViewer object={viewObject} className="laser-canvas" />
+          {model ? (
+            <div className="laser-view-toggle">
+              <Button.Group>
+                <Button
+                  size="small"
+                  type={viewMode === '3d' ? 'primary' : 'secondary'}
+                  onClick={() => setViewMode('3d')}
+                >
+                  3D 模型
+                </Button>
+                <Button
+                  size="small"
+                  type={viewMode === '2d' ? 'primary' : 'secondary'}
+                  onClick={() => setViewMode('2d')}
+                >
+                  平面路径
+                </Button>
+              </Button.Group>
+            </div>
+          ) : null}
+          {viewMode === '2d' ? (
+            model ? (
+              <PathPreview
+                model={model}
+                plateSel={plateSel}
+                flipY={flipY}
+                showEngraveColors={showEngraveColors}
+                className="laser-canvas"
+              />
             ) : (
-              <div className="laser-empty">上传 .lac 文件后在此预览 3D 模型</div>
-            )}
-          </Spin>
+              <div className="laser-empty">上传 .lac 文件后在此预览平面路径</div>
+            )
+          ) : (
+            <Spin loading={building} tip="生成模型中…" className="laser-spin">
+              {viewObject ? (
+                <ModelViewer object={viewObject} className="laser-canvas" />
+              ) : (
+                <div className="laser-empty">上传 .lac 文件后在此预览 3D 模型</div>
+              )}
+            </Spin>
+          )}
         </div>
       </div>
     </div>

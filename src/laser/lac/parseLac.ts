@@ -139,8 +139,9 @@ function parseColor(c?: string): [number, number, number, number] {
 
 /**
  * Parse an SVG path-data string into an array of sub-paths (loops of points).
- * Bambu cut data uses only M/L/Z; curve commands are coarsely approximated by
- * their end points so unexpected input won't crash.
+ * Bambu cut data is mostly M/L/C/Z; cubic (C/S) and quadratic (Q/T) Béziers are
+ * adaptively flattened into line segments so curved outlines stay smooth.
+ * Elliptical arcs (A) are approximated by their end point (rare in this data).
  */
 export function parsePathData(d: string): Loop[] {
   const loops: Loop[] = [];
@@ -148,6 +149,10 @@ export function parsePathData(d: string): Loop[] {
   let start: Pt = { x: 0, y: 0 };
   let cx = 0;
   let cy = 0;
+  // last cubic/quad control point + kind, for S/T smooth-curve reflection
+  let pcx = 0;
+  let pcy = 0;
+  let prevCurve: '' | 'C' | 'Q' = '';
   const tokens = d.match(/[a-zA-Z]|-?\d*\.?\d+(?:[eE][-+]?\d+)?/g) || [];
   let i = 0;
   let cmd = '';
@@ -163,6 +168,44 @@ export function parsePathData(d: string): Loop[] {
     cur = [];
   };
 
+  // Adaptive cubic flattening (de Casteljau, ~0.12 mm flatness). The curve's
+  // start is already the current point, so we emit only the subdivided points
+  // up to and including the end point.
+  const TOL2 = 16 * 0.12 * 0.12;
+  const flatten = (
+    x0: number, y0: number, x1: number, y1: number,
+    x2: number, y2: number, x3: number, y3: number, depth: number
+  ): void => {
+    const ux = 3 * x1 - 2 * x0 - x3;
+    const uy = 3 * y1 - 2 * y0 - y3;
+    const vx = 3 * x2 - x0 - 2 * x3;
+    const vy = 3 * y2 - y0 - 2 * y3;
+    if (depth >= 18 || Math.max(ux * ux, vx * vx) + Math.max(uy * uy, vy * vy) <= TOL2) {
+      push(x3, y3);
+      return;
+    }
+    const x01 = (x0 + x1) / 2, y01 = (y0 + y1) / 2;
+    const x12 = (x1 + x2) / 2, y12 = (y1 + y2) / 2;
+    const x23 = (x2 + x3) / 2, y23 = (y2 + y3) / 2;
+    const xa = (x01 + x12) / 2, ya = (y01 + y12) / 2;
+    const xb = (x12 + x23) / 2, yb = (y12 + y23) / 2;
+    const xm = (xa + xb) / 2, ym = (ya + yb) / 2;
+    flatten(x0, y0, x01, y01, xa, ya, xm, ym, depth + 1);
+    flatten(xm, ym, xb, yb, x23, y23, x3, y3, depth + 1);
+  };
+  // Flatten a cubic from the current point; callers update the smoothing state.
+  const cubic = (x1: number, y1: number, x2: number, y2: number, x3: number, y3: number) => {
+    flatten(cx, cy, x1, y1, x2, y2, x3, y3, 0);
+  };
+  // Elevate a quadratic to cubic so the same flattener applies.
+  const quad = (qx: number, qy: number, x3: number, y3: number) => {
+    const x1 = cx + (2 / 3) * (qx - cx);
+    const y1 = cy + (2 / 3) * (qy - cy);
+    const x2 = x3 + (2 / 3) * (qx - x3);
+    const y2 = y3 + (2 / 3) * (qy - y3);
+    flatten(cx, cy, x1, y1, x2, y2, x3, y3, 0);
+  };
+
   while (i < tokens.length) {
     if (isCmd(tokens[i])) cmd = tokens[i++];
     switch (cmd) {
@@ -170,74 +213,105 @@ export function parsePathData(d: string): Loop[] {
         flush();
         start = { x: num(), y: num() };
         cur = [{ ...start }];
-        cx = start.x;
-        cy = start.y;
+        cx = start.x; cy = start.y; prevCurve = '';
         cmd = 'L';
         break;
       case 'm':
         flush();
         start = { x: cx + num(), y: cy + num() };
         cur = [{ ...start }];
-        cx = start.x;
-        cy = start.y;
+        cx = start.x; cy = start.y; prevCurve = '';
         cmd = 'l';
         break;
       case 'L':
-        push(num(), num());
+        push(num(), num()); prevCurve = '';
         break;
       case 'l':
-        push(cx + num(), cy + num());
+        push(cx + num(), cy + num()); prevCurve = '';
         break;
       case 'H':
-        push(num(), cy);
+        push(num(), cy); prevCurve = '';
         break;
       case 'h':
-        push(cx + num(), cy);
+        push(cx + num(), cy); prevCurve = '';
         break;
       case 'V':
-        push(cx, num());
+        push(cx, num()); prevCurve = '';
         break;
       case 'v':
-        push(cx, cy + num());
+        push(cx, cy + num()); prevCurve = '';
         break;
       case 'Z':
       case 'z':
         if (cur.length) cur.push({ ...start });
         flush();
-        cx = start.x;
-        cy = start.y;
+        cx = start.x; cy = start.y; prevCurve = '';
         break;
-      case 'C':
-        num(); num(); num(); num();
-        push(num(), num());
+      case 'C': {
+        const x1 = num(), y1 = num(), x2 = num(), y2 = num(), x3 = num(), y3 = num();
+        cubic(x1, y1, x2, y2, x3, y3);
+        pcx = x2; pcy = y2; prevCurve = 'C';
         break;
-      case 'c':
-        num(); num(); num(); num();
-        push(cx + num(), cy + num());
+      }
+      case 'c': {
+        const x1 = cx + num(), y1 = cy + num();
+        const x2 = cx + num(), y2 = cy + num();
+        const x3 = cx + num(), y3 = cy + num();
+        cubic(x1, y1, x2, y2, x3, y3);
+        pcx = x2; pcy = y2; prevCurve = 'C';
         break;
-      case 'S':
-      case 'Q':
-        num(); num();
-        push(num(), num());
+      }
+      case 'S': {
+        const x1 = prevCurve === 'C' ? 2 * cx - pcx : cx;
+        const y1 = prevCurve === 'C' ? 2 * cy - pcy : cy;
+        const x2 = num(), y2 = num(), x3 = num(), y3 = num();
+        cubic(x1, y1, x2, y2, x3, y3);
+        pcx = x2; pcy = y2; prevCurve = 'C';
         break;
-      case 's':
-      case 'q':
-        num(); num();
-        push(cx + num(), cy + num());
+      }
+      case 's': {
+        const x1 = prevCurve === 'C' ? 2 * cx - pcx : cx;
+        const y1 = prevCurve === 'C' ? 2 * cy - pcy : cy;
+        const x2 = cx + num(), y2 = cy + num();
+        const x3 = cx + num(), y3 = cy + num();
+        cubic(x1, y1, x2, y2, x3, y3);
+        pcx = x2; pcy = y2; prevCurve = 'C';
         break;
-      case 'T':
-        push(num(), num());
+      }
+      case 'Q': {
+        const qx = num(), qy = num(), x3 = num(), y3 = num();
+        quad(qx, qy, x3, y3);
+        pcx = qx; pcy = qy; prevCurve = 'Q';
         break;
-      case 't':
-        push(cx + num(), cy + num());
+      }
+      case 'q': {
+        const qx = cx + num(), qy = cy + num();
+        const x3 = cx + num(), y3 = cy + num();
+        quad(qx, qy, x3, y3);
+        pcx = qx; pcy = qy; prevCurve = 'Q';
         break;
+      }
+      case 'T': {
+        const qx = prevCurve === 'Q' ? 2 * cx - pcx : cx;
+        const qy = prevCurve === 'Q' ? 2 * cy - pcy : cy;
+        quad(qx, qy, num(), num());
+        pcx = qx; pcy = qy; prevCurve = 'Q';
+        break;
+      }
+      case 't': {
+        const qx = prevCurve === 'Q' ? 2 * cx - pcx : cx;
+        const qy = prevCurve === 'Q' ? 2 * cy - pcy : cy;
+        quad(qx, qy, cx + num(), cy + num());
+        pcx = qx; pcy = qy; prevCurve = 'Q';
+        break;
+      }
       case 'A':
         num(); num(); num(); num(); num();
-        push(num(), num());
+        push(num(), num()); prevCurve = '';
         break;
       case 'a':
         num(); num(); num(); num(); num();
-        push(cx + num(), cy + num());
+        push(cx + num(), cy + num()); prevCurve = '';
         break;
       default:
         i++;
@@ -471,6 +545,40 @@ export function parseLac(buf: Uint8Array): LacModel {
   }
 
   if (!plates.length) warnings.push('没有解析到任何闭合路径几何');
+
+  // Re-derive cut vs engrave from laser ENERGY, not just the process-type name.
+  // Some designs (e.g. line-cut files) label every path "LaserLineEngrave" even
+  // though the laser cuts clean through them. The physical truth is energy: the
+  // highest-energy process cuts through (= a cut/severance line); only paths
+  // whose energy is clearly LOWER are true surface engraves that don't sever
+  // the material. When every path shares a single energy, none is "lower", so
+  // they are all through-cuts (and the model should show no engrave marks).
+  const energies = plates
+    .flatMap((p) => p.pieces)
+    .map((pc) => pc.laser.energy)
+    .filter((e): e is number => e != null);
+  if (energies.length) {
+    const maxE = Math.max(...energies);
+    // ≥85% of the peak energy ⇒ treated as a through-cut; below that ⇒ engrave.
+    const CUT_RATIO = 0.85;
+    let cutE: number | undefined;
+    let engE: number | undefined;
+    for (const pl of plates) {
+      for (const pc of pl.pieces) {
+        const e = pc.laser.energy;
+        if (e == null) continue; // unknown energy → keep the name-based guess
+        if (e >= maxE * CUT_RATIO) {
+          pc.process = 'cut';
+          cutE = cutE == null ? e : Math.max(cutE, e);
+        } else {
+          pc.process = 'engrave';
+          engE = engE == null ? e : Math.max(engE, e);
+        }
+      }
+    }
+    meta.cutEnergy = cutE ?? meta.cutEnergy;
+    meta.engraveEnergy = engE;
+  }
 
   // Tally distinct processes from the resolved pieces (counts match geometry).
   const usageByType = new Map<string, ProcessUsage>();

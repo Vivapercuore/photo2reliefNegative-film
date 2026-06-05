@@ -40,19 +40,28 @@ const ModelViewer: React.FC<ModelViewerProps> = ({ object, className }) => {
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(width, height);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
     container.appendChild(renderer.domElement);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.1;
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-    const key = new THREE.DirectionalLight(0xffffff, 0.9);
-    key.position.set(1, 1.5, 1);
+    // Sky/ground hemisphere fill gives volume even on flat top faces; a strong
+    // key plus a softer fill and a back rim light bring out the 3D structure.
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x4a4a52, 0.55);
+    scene.add(hemi);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+    const key = new THREE.DirectionalLight(0xffffff, 1.15);
+    key.position.set(0.7, 1.4, 0.9);
     scene.add(key);
-    const fill = new THREE.DirectionalLight(0xffffff, 0.4);
-    fill.position.set(-1, -0.5, -1);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.5);
+    fill.position.set(-0.9, 0.4, -0.6);
     scene.add(fill);
+    const rim = new THREE.DirectionalLight(0xffffff, 0.45);
+    rim.position.set(0.2, 0.6, -1.2);
+    scene.add(rim);
 
     const grid = new THREE.GridHelper(400, 40, 0x555555, 0x333333);
     (grid.material as THREE.Material).transparent = true;
