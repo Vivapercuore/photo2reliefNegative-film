@@ -8,56 +8,72 @@ interface ModelViewerProps {
   className?: string;
 }
 
-interface ViewerRefs {
-  renderer: THREE.WebGLRenderer;
-  scene: THREE.Scene;
-  camera: THREE.PerspectiveCamera;
-  controls: OrbitControls;
-  grid: THREE.GridHelper;
-  frameId: number;
-  ro: ResizeObserver;
+/**
+ * A single, app-wide WebGL renderer. Creating a renderer per mount leaks a GPU
+ * context on every unmount (2D/3D toggle, file reload, navigation, StrictMode
+ * double-mount); browsers cap live contexts (~16) and, once exceeded, can
+ * disable WebGL for the whole tab until a full restart. By sharing ONE renderer
+ * and only ever moving its <canvas> between containers, the app uses at most one
+ * context for its entire lifetime — the leak is structurally impossible.
+ */
+let sharedRenderer: THREE.WebGLRenderer | null = null;
+let sharedRendererFailed = false;
+
+function getSharedRenderer(): THREE.WebGLRenderer | null {
+  if (sharedRenderer) return sharedRenderer;
+  if (sharedRendererFailed) return null;
+  try {
+    const r = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    r.setPixelRatio(window.devicePixelRatio);
+    r.toneMapping = THREE.ACESFilmicToneMapping;
+    r.toneMappingExposure = 1.15;
+    sharedRenderer = r;
+    return r;
+  } catch (err) {
+    sharedRendererFailed = true;
+    return null;
+  }
 }
 
 const ModelViewer: React.FC<ModelViewerProps> = ({ object, className }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const refs = useRef<ViewerRefs | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
+  const gridRef = useRef<THREE.GridHelper | null>(null);
   const currentObject = useRef<THREE.Object3D | null>(null);
   const [glError, setGlError] = useState(false);
 
-  // one-time scene setup
+  // per-mount scene setup; reuses the shared renderer's canvas
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
+    const renderer = getSharedRenderer();
+    if (!renderer) {
+      setGlError(true);
+      return;
+    }
+    setGlError(false);
+
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x1d1d1d);
+    sceneRef.current = scene;
 
     const width = container.clientWidth || 600;
     const height = container.clientHeight || 400;
 
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100000);
     camera.position.set(120, 120, 160);
+    cameraRef.current = camera;
 
-    // Creating the renderer can throw if the browser refuses a WebGL context
-    // (e.g. too many live contexts, or GPU/driver disabled). Catch it so the
-    // whole app doesn't crash with an uncaught error — show a fallback instead.
-    let renderer: THREE.WebGLRenderer;
-    try {
-      renderer = new THREE.WebGLRenderer({ antialias: true });
-    } catch (err) {
-      setGlError(true);
-      return;
-    }
-    setGlError(false);
-    renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(width, height);
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.15;
     container.appendChild(renderer.domElement);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.1;
+    controlsRef.current = controls;
 
     // Sky/ground hemisphere fill gives volume even on flat top faces; a strong
     // key plus a softer fill and a back rim light bring out the 3D structure.
@@ -78,11 +94,15 @@ const ModelViewer: React.FC<ModelViewerProps> = ({ object, className }) => {
     (grid.material as THREE.Material).transparent = true;
     (grid.material as THREE.Material).opacity = 0.4;
     scene.add(grid);
+    gridRef.current = grid;
 
+    let frameId = 0;
+    let disposed = false;
     const animate = () => {
+      if (disposed) return;
       controls.update();
       renderer.render(scene, camera);
-      if (refs.current) refs.current.frameId = requestAnimationFrame(animate);
+      frameId = requestAnimationFrame(animate);
     };
 
     // Defer the actual resize work to the next frame. Doing it synchronously
@@ -106,40 +126,44 @@ const ModelViewer: React.FC<ModelViewerProps> = ({ object, className }) => {
     });
     ro.observe(container);
 
-    refs.current = { renderer, scene, camera, controls, grid, frameId: 0, ro };
-    refs.current.frameId = requestAnimationFrame(animate);
+    frameId = requestAnimationFrame(animate);
 
     return () => {
-      if (refs.current) cancelAnimationFrame(refs.current.frameId);
+      disposed = true;
+      cancelAnimationFrame(frameId);
       if (resizeRaf) cancelAnimationFrame(resizeRaf);
       ro.disconnect();
       controls.dispose();
-      // dispose() frees GPU resources but does NOT release the WebGL context
-      // itself. Without forceContextLoss the context leaks on every unmount
-      // (2D/3D toggle, file reload, navigation, StrictMode double-mount), and
-      // browsers cap live contexts (~16) — after which new THREE.WebGLRenderer()
-      // throws "Could not create a WebGL context". Force-lose it here.
-      renderer.forceContextLoss();
-      renderer.dispose();
+      // Detach (but DON'T dispose) the shared renderer so it survives for the
+      // next mount — this is what prevents context leaks.
       if (renderer.domElement.parentNode === container) {
         container.removeChild(renderer.domElement);
       }
-      refs.current = null;
+      // dispose per-mount scene resources (geometries/materials are owned by the
+      // caller via the passed-in object, so we only drop our own helpers/lights)
+      grid.geometry.dispose();
+      (grid.material as THREE.Material).dispose();
+      sceneRef.current = null;
+      cameraRef.current = null;
+      controlsRef.current = null;
+      gridRef.current = null;
     };
   }, []);
 
   // swap displayed object + frame the camera to fit it
   useEffect(() => {
-    const r = refs.current;
-    if (!r) return;
+    const scene = sceneRef.current;
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!scene || !camera || !controls) return;
 
     if (currentObject.current) {
-      r.scene.remove(currentObject.current);
+      scene.remove(currentObject.current);
       currentObject.current = null;
     }
     if (!object) return;
 
-    r.scene.add(object);
+    scene.add(object);
     currentObject.current = object;
 
     const box = new THREE.Box3().setFromObject(object);
@@ -150,25 +174,29 @@ const ModelViewer: React.FC<ModelViewerProps> = ({ object, className }) => {
     box.getCenter(center);
 
     const maxDim = Math.max(size.x, size.y, size.z) || 1;
-    const fov = (r.camera.fov * Math.PI) / 180;
+    const fov = (camera.fov * Math.PI) / 180;
     const dist = (maxDim / 2 / Math.tan(fov / 2)) * 1.8;
 
-    r.controls.target.copy(center);
-    r.camera.position.set(center.x + dist * 0.7, center.y + dist * 0.7, center.z + dist);
-    r.camera.near = Math.max(0.1, maxDim / 1000);
-    r.camera.far = maxDim * 100;
-    r.camera.updateProjectionMatrix();
-    r.controls.update();
+    controls.target.copy(center);
+    camera.position.set(center.x + dist * 0.7, center.y + dist * 0.7, center.z + dist);
+    camera.near = Math.max(0.1, maxDim / 1000);
+    camera.far = maxDim * 100;
+    camera.updateProjectionMatrix();
+    controls.update();
 
     // scale the floor grid to the model
-    r.scene.remove(r.grid);
+    if (gridRef.current) {
+      scene.remove(gridRef.current);
+      gridRef.current.geometry.dispose();
+      (gridRef.current.material as THREE.Material).dispose();
+    }
     const gsize = Math.ceil((maxDim * 2) / 10) * 10;
     const grid = new THREE.GridHelper(gsize, 40, 0x555555, 0x333333);
     (grid.material as THREE.Material).transparent = true;
     (grid.material as THREE.Material).opacity = 0.4;
     grid.position.set(center.x, box.min.y, center.z);
-    r.scene.add(grid);
-    r.grid = grid;
+    scene.add(grid);
+    gridRef.current = grid;
   }, [object]);
 
   return (
@@ -189,7 +217,7 @@ const ModelViewer: React.FC<ModelViewerProps> = ({ object, className }) => {
       }}
     >
       {glError
-        ? '无法创建 3D 预览（WebGL 上下文不可用）。请刷新页面后重试；若仍失败，请确认浏览器已启用硬件加速 / WebGL。'
+        ? '无法创建 3D 预览（WebGL 已被浏览器禁用）。这通常发生在之前的 WebGL 错误导致浏览器临时关闭了 GPU 加速——请彻底关闭并重新打开浏览器；若仍失败，请在浏览器设置中开启“使用硬件加速”。'
         : null}
     </div>
   );
