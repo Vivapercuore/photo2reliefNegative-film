@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 
@@ -22,6 +22,7 @@ const ModelViewer: React.FC<ModelViewerProps> = ({ object, className }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const refs = useRef<ViewerRefs | null>(null);
   const currentObject = useRef<THREE.Object3D | null>(null);
+  const [glError, setGlError] = useState(false);
 
   // one-time scene setup
   useEffect(() => {
@@ -37,7 +38,17 @@ const ModelViewer: React.FC<ModelViewerProps> = ({ object, className }) => {
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100000);
     camera.position.set(120, 120, 160);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    // Creating the renderer can throw if the browser refuses a WebGL context
+    // (e.g. too many live contexts, or GPU/driver disabled). Catch it so the
+    // whole app doesn't crash with an uncaught error — show a fallback instead.
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+    } catch (err) {
+      setGlError(true);
+      return;
+    }
+    setGlError(false);
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(width, height);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -103,6 +114,12 @@ const ModelViewer: React.FC<ModelViewerProps> = ({ object, className }) => {
       if (resizeRaf) cancelAnimationFrame(resizeRaf);
       ro.disconnect();
       controls.dispose();
+      // dispose() frees GPU resources but does NOT release the WebGL context
+      // itself. Without forceContextLoss the context leaks on every unmount
+      // (2D/3D toggle, file reload, navigation, StrictMode double-mount), and
+      // browsers cap live contexts (~16) — after which new THREE.WebGLRenderer()
+      // throws "Could not create a WebGL context". Force-lose it here.
+      renderer.forceContextLoss();
       renderer.dispose();
       if (renderer.domElement.parentNode === container) {
         container.removeChild(renderer.domElement);
@@ -158,8 +175,23 @@ const ModelViewer: React.FC<ModelViewerProps> = ({ object, className }) => {
     <div
       ref={containerRef}
       className={className}
-      style={{ width: '100%', height: '100%', minHeight: 360 }}
-    />
+      style={{
+        width: '100%',
+        height: '100%',
+        minHeight: 360,
+        display: glError ? 'flex' : undefined,
+        alignItems: glError ? 'center' : undefined,
+        justifyContent: glError ? 'center' : undefined,
+        textAlign: 'center',
+        color: '#bbb',
+        padding: glError ? 16 : undefined,
+        boxSizing: 'border-box',
+      }}
+    >
+      {glError
+        ? '无法创建 3D 预览（WebGL 上下文不可用）。请刷新页面后重试；若仍失败，请确认浏览器已启用硬件加速 / WebGL。'
+        : null}
+    </div>
   );
 };
 

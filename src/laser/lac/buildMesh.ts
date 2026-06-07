@@ -281,7 +281,7 @@ function signedArea(p: Pt[]): number {
 
 /** Force a contour to the given orientation (true = CCW / positive area). */
 function orient(p: Pt[], ccw: boolean): Pt[] {
-  return signedArea(p) >= 0 === ccw ? p : [...p].reverse();
+  return (signedArea(p) >= 0) === ccw ? p : [...p].reverse();
 }
 
 /**

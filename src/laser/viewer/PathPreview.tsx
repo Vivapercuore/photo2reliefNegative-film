@@ -61,10 +61,17 @@ const PathPreview: React.FC<Props> = ({ model, plateSel, flipY, showEngraveColor
     // Build world-space polylines once, accumulating the overall bbox.
     type Line = { pts: Pt[]; color: string; closed: boolean };
     const lines: Line[] = [];
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
+    const bbox = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+    // hoisted out of the loops so it captures no loop-scoped mutable vars
+    const transformPt = (p: Pt, cx: number, cy: number, offX: number, offY: number): Pt => {
+      const x = p.x - cx + offX;
+      const y = (flipY ? -(p.y - cy) : p.y - cy) + offY;
+      if (x < bbox.minX) bbox.minX = x;
+      if (x > bbox.maxX) bbox.maxX = x;
+      if (y < bbox.minY) bbox.minY = y;
+      if (y > bbox.maxY) bbox.maxY = y;
+      return { x, y };
+    };
     selected.forEach((plate, i) => {
       const col = i % cols;
       const row = Math.floor(i / cols);
@@ -75,19 +82,12 @@ const PathPreview: React.FC<Props> = ({ model, plateSel, flipY, showEngraveColor
       for (const piece of plate.pieces) {
         const color = colorOf(piece);
         for (const lp of piece.loops) {
-          const pts = lp.map((p) => {
-            const x = p.x - cx + offX;
-            const y = (flipY ? -(p.y - cy) : p.y - cy) + offY;
-            if (x < minX) minX = x;
-            if (x > maxX) maxX = x;
-            if (y < minY) minY = y;
-            if (y > maxY) maxY = y;
-            return { x, y };
-          });
+          const pts = lp.map((p) => transformPt(p, cx, cy, offX, offY));
           if (pts.length >= 2) lines.push({ pts, color, closed: piece.closed });
         }
       }
     });
+    const { minX, minY, maxX, maxY } = bbox;
 
     const draw = () => {
       const dpr = window.devicePixelRatio || 1;
