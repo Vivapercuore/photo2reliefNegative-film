@@ -22,6 +22,7 @@ import { buildModel, disposeBuild, BuildResult, BuildOptions, engraveColorAt } f
 import ModelViewer from './viewer/ModelViewer';
 import PathPreview from './viewer/PathPreview';
 import { pack3mf } from '../export/bambu/build3mf';
+import { useDocumentTitle } from '../useDocumentTitle';
 
 const Option = Select.Option;
 
@@ -92,6 +93,7 @@ function autoDepthRatio(model: LacModel, thickness: number): number {
 
 const LaserCut: React.FC = () => {
   const navigate = useNavigate();
+  useDocumentTitle('激光刀切转3D模型');
 
   const [fileName, setFileName] = useState('');
   const fileBytesRef = useRef<Uint8Array | null>(null);

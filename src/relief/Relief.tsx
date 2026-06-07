@@ -18,6 +18,7 @@ import './Relief.css';
 
 import { Config } from '../dataProcess/type';
 import { PhotoSizeMap } from '../constants';
+import { useDocumentTitle } from '../useDocumentTitle';
 import ModelViewer from '../laser/viewer/ModelViewer';
 import { pack3mf, BambuTemplate, Pack3mfOptions } from '../export/bambu/build3mf';
 import type { ReliefRequest, ReliefResponse } from './worker/relief.worker';
@@ -69,6 +70,7 @@ function saveBlob(data: BlobPart, filename: string) {
 
 const Relief: React.FC = () => {
   const navigate = useNavigate();
+  useDocumentTitle('照片转浮雕负片');
 
   // parameters (same semantics as the legacy tool)
   const [preset, setPreset] = useState(PresetMode.default);
@@ -596,11 +598,10 @@ const Relief: React.FC = () => {
                     disabled={building || exporting || !stats}
                     onClick={onExport3mf}
                   >
-                    导出 3MF（含拓竹工艺参数 + 项目信息）
+                    导出 3MF（含拓竹工艺参数）
                   </Button>
                   <div className="describe" style={{ marginTop: 8 }}>
-                    已内置「{PRESET_LABEL[preset]}」打印工艺与你的 MakerWorld 项目信息，导入拓竹切片软件后
-                    无需再手动设置层高 / 填充 / 耗材；删掉示例占位、放入此模型即可打印。
+                    已内置「{PRESET_LABEL[preset]}」打印工艺，打开3mf文件即可打印。
                   </div>
                 </List.Item>
               </>
