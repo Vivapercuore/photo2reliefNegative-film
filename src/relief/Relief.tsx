@@ -20,6 +20,7 @@ import { Config } from '../dataProcess/type';
 import { PhotoSizeMap } from '../constants';
 import { useDocumentTitle } from '../useDocumentTitle';
 import ModelViewer from '../laser/viewer/ModelViewer';
+import ZoomableImage from '../ZoomableImage';
 import { pack3mf, BambuTemplate, Pack3mfOptions } from '../export/bambu/build3mf';
 import type { ReliefRequest, ReliefResponse } from './worker/relief.worker';
 
@@ -99,6 +100,7 @@ const Relief: React.FC = () => {
 
   const [imageUrl, setImageUrl] = useState('');
   const [fileName, setFileName] = useState('');
+  const [previewOpen, setPreviewOpen] = useState(true);
   const bitmapSrcRef = useRef<File | null>(null);
   const [imgSize, setImgSize] = useState({ width: 0, height: 0 });
 
@@ -109,8 +111,7 @@ const Relief: React.FC = () => {
   const workerRef = useRef<Worker | null>(null);
   const meshRef = useRef<THREE.Mesh | null>(null);
   const geomRef = useRef<THREE.BufferGeometry | null>(null);
-  const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [hasPreview, setHasPreview] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState('');
   const [viewObject, setViewObject] = useState<THREE.Object3D | null>(null);
   const [stats, setStats] = useState<{ triangles: number; size: { x: number; y: number; z: number } } | null>(
     null
@@ -141,11 +142,11 @@ const Relief: React.FC = () => {
 
   // Paint the worker's grayscale depth-level preview onto the panel canvas.
   const renderPreview = useCallback((preview: Uint8Array, width: number, height: number) => {
-    const canvas = previewCanvasRef.current;
-    if (!canvas || !width || !height) {
-      setHasPreview(false);
+    if (!width || !height) {
+      setPreviewUrl('');
       return;
     }
+    const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext('2d');
@@ -160,7 +161,7 @@ const Relief: React.FC = () => {
       img.data[idx + 3] = 255;
     }
     ctx.putImageData(img, 0, 0);
-    setHasPreview(true);
+    setPreviewUrl(canvas.toDataURL());
   }, []);
 
   // file upload → data URL + intrinsic size
@@ -374,24 +375,36 @@ const Relief: React.FC = () => {
               />
               {imageUrl ? (
                 <>
-                  <div className="title" style={{ marginTop: 12 }}>
-                    原图
+                  <div
+                    className="relief-collapse-head"
+                    onClick={() => setPreviewOpen((o) => !o)}
+                  >
+                    <span className="title">原图 / 黑白预览</span>
+                    <span className="relief-collapse-icon">{previewOpen ? '收起 ▲' : '展开 ▼'}</span>
                   </div>
-                  {/* eslint-disable-next-line jsx-a11y/alt-text */}
-                  <img className="relief-input-img" src={imageUrl} />
-                  <div className="title" style={{ marginTop: 12 }}>
-                    黑白预览（按实际色阶）
-                  </div>
-                  <div className="describe">
-                    依据量化后的实际打印深度生成：越厚越暗、越薄越亮，用于预估成片明暗效果。
-                  </div>
-                  <canvas
-                    ref={previewCanvasRef}
-                    className="relief-preview-canvas"
-                    style={{ display: hasPreview ? 'block' : 'none' }}
-                  />
-                  {!hasPreview ? (
-                    <div className="describe">生成模型后将在此显示黑白预览。</div>
+                  {previewOpen ? (
+                    <>
+                      <div className="title" style={{ marginTop: 12 }}>
+                        原图
+                      </div>
+                      <ZoomableImage src={imageUrl} alt="原图" className="relief-input-img" />
+                      <div className="title" style={{ marginTop: 12 }}>
+                        黑白预览（按实际色阶）
+                      </div>
+                      <div className="describe">
+                        依据量化后的实际打印深度生成：越厚越暗、越薄越亮，用于预估成片明暗效果。
+                      </div>
+                      {previewUrl ? (
+                        <ZoomableImage
+                          src={previewUrl}
+                          alt="黑白预览"
+                          pixelated
+                          className="relief-preview-canvas"
+                        />
+                      ) : (
+                        <div className="describe">生成模型后将在此显示黑白预览。</div>
+                      )}
+                    </>
                   ) : null}
                 </>
               ) : null}

@@ -42,6 +42,8 @@ export interface Object3mf {
    * (bed-local coordinates, so plates may overlap in space). Default: plate 1.
    */
   plate?: number;
+  /** 1-based filament slot (color) this object prints with. Default 1. */
+  extruder?: number;
 }
 
 export interface Pack3mfOptions {
@@ -55,7 +57,7 @@ export interface Pack3mfOptions {
    * custom mode to force `layer_height`/`initial_layer_print_height` to match
    * the geometry's layer thickness.
    */
-  projectSettingsOverrides?: Record<string, string>;
+  projectSettingsOverrides?: Record<string, unknown>;
   /**
    * Path prefix where `public/bambu/` is served. Empty (default) means the app
    * is served at the origin root (docker / dev / current mirrors). Set this to
@@ -174,13 +176,15 @@ interface PreparedObject {
   mesh: MeshXml;
   /** 1-based print plate this object sits on. */
   plate: number;
+  /** 1-based filament slot (color). */
+  extruder: number;
   /** Plate translation (mm) applied via the build item transform. */
   tx: number;
   ty: number;
   tz: number;
 }
 
-type MeshedObject = { name: string; mesh: MeshXml; plate: number };
+type MeshedObject = { name: string; mesh: MeshXml; plate: number; extruder: number };
 
 /**
  * Place one plate's objects on its bed cell, **preserving their relative
@@ -215,7 +219,7 @@ function layoutPlate(
   const tx = cellX + bed.x / 2 - (minX + maxX) / 2;
   const ty = cellY + bed.y / 2 - (minY + maxY) / 2;
   const tz = -minZ;
-  return objects.map((o) => ({ name: o.name, mesh: o.mesh, plate: o.plate, tx, ty, tz }));
+  return objects.map((o) => ({ name: o.name, mesh: o.mesh, plate: o.plate, extruder: o.extruder, tx, ty, tz }));
 }
 
 /**
@@ -332,11 +336,11 @@ function buildModelSettingsXml(prepared: PreparedObject[]): string {
       (p, i) =>
         `  <object id="${i + 1}">\n` +
         `    <metadata key="name" value="${escapeXml(p.name)}"/>\n` +
-        `    <metadata key="extruder" value="1"/>\n` +
+        `    <metadata key="extruder" value="${p.extruder}"/>\n` +
         `    <part id="1" subtype="normal_part">\n` +
         `      <metadata key="name" value="${escapeXml(p.name)}"/>\n` +
         `      <metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/>\n` +
-        `      <metadata key="extruder" value="1"/>\n` +
+        `      <metadata key="extruder" value="${p.extruder}"/>\n` +
         `      <mesh_stat face_count="${p.mesh.triangleCount}" edges_fixed="0" degenerate_facets="0" facets_removed="0" facets_reversed="0" backwards_edges="0"/>\n` +
         `    </part>\n` +
         `  </object>`
@@ -364,7 +368,6 @@ function buildModelSettingsXml(prepared: PreparedObject[]): string {
         `    <metadata key="plater_name" value="plate-${pIdx + 1}"/>\n` +
         `    <metadata key="locked" value="false"/>\n` +
         `    <metadata key="filament_map_mode" value="Auto For Flush"/>\n` +
-        `    <metadata key="filament_maps" value="1"/>\n` +
         `${instances}\n` +
         `  </plate>`
       );
@@ -437,6 +440,7 @@ export async function pack3mf(
     name: o.name,
     mesh: geometryToMesh(o.geometry),
     plate: o.plate ?? 1,
+    extruder: o.extruder ?? 1,
   }));
   const prepared = layout(meshed, bed, gap);
 

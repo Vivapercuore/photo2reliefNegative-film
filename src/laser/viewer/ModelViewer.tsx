@@ -178,7 +178,9 @@ const ModelViewer: React.FC<ModelViewerProps> = ({ object, className }) => {
     const dist = (maxDim / 2 / Math.tan(fov / 2)) * 1.8;
 
     controls.target.copy(center);
-    camera.position.set(center.x + dist * 0.7, center.y + dist * 0.7, center.z + dist);
+    // default to a straight top-down view (camera directly above, -Z = screen-up)
+    camera.up.set(0, 0, -1);
+    camera.position.set(center.x, center.y + dist, center.z);
     camera.near = Math.max(0.1, maxDim / 1000);
     camera.far = maxDim * 100;
     camera.updateProjectionMatrix();

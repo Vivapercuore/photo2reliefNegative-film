@@ -1,0 +1,29 @@
+.zoomable-img {
+  display: block;
+  cursor: zoom-in;
+}
+
+.zoom-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+}
+.zoom-lightbox img {
+  max-width: 96vw;
+  max-height: 96vh;
+}
+.zoom-close {
+  position: fixed;
+  top: 12px;
+  right: 24px;
+  font-size: 40px;
+  line-height: 1;
+  color: #fff;
+  cursor: pointer;
+  user-select: none;
+}

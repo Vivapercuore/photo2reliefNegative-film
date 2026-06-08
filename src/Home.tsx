@@ -76,6 +76,39 @@ const ReliefIcon: React.FC = () => (
   </svg>
 );
 
+/**
+ * Color backlit-negative icon: a backlight glow over a panel filled with R/G/B
+ * dither dots (additive color) — the dithered color negative read by light.
+ */
+const ColorNegIcon: React.FC = () => (
+  <svg
+    width="48"
+    height="48"
+    viewBox="0 0 48 48"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    {/* backlight source + rays */}
+    <circle cx="24" cy="9" r="3.5" />
+    <path d="M24 2.5 V0.5 M30 5 l1.4 -1.4 M18 5 l-1.4 -1.4" opacity="0.85" />
+    {/* panel */}
+    <rect x="8" y="22" width="32" height="20" rx="2" />
+    {/* RGB dither dots */}
+    <g stroke="none">
+      <circle cx="15" cy="29" r="2" fill="#f53f3f" />
+      <circle cx="22" cy="29" r="2" fill="#00b42a" />
+      <circle cx="29" cy="29" r="2" fill="#3491fa" />
+      <circle cx="18" cy="35" r="2" fill="#3491fa" />
+      <circle cx="25" cy="35" r="2" fill="#f53f3f" />
+      <circle cx="32" cy="35" r="2" fill="#00b42a" />
+    </g>
+  </svg>
+);
+
 const features: FeatureItem[] = [
   {
     title: '照片转浮雕负片',
@@ -88,6 +121,13 @@ const features: FeatureItem[] = [
     description: '上传拓竹社区的激光刀切 .lac 文件，自动读取刀路，挤出生成可预览、可下载(STL)的3D模型。',
     path: '/lac2model',
     icon: <LaserCutIcon />,
+  },
+  {
+    title: '彩色照片转正片',
+    description:
+      '上传彩色照片，Floyd-Steinberg 抖动到 RGB+黑，按喷嘴物理分辨率生成「颜色分布直接决定色彩」的多色正片（测试版，多色 3MF 导出开发中）。',
+    path: '/color-positive',
+    icon: <ColorNegIcon />,
   },
 ];
 

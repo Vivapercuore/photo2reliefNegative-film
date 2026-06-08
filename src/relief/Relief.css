@@ -67,6 +67,22 @@
   margin-bottom: 10px;
 }
 
+.relief-collapse-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  margin-top: 12px;
+}
+.relief-collapse-head .title {
+  margin-bottom: 0;
+}
+.relief-collapse-icon {
+  font-size: 12px;
+  color: var(--color-text-3, #999);
+}
+
 .relief-input-img {
   width: 100%;
   max-height: 30vh;
