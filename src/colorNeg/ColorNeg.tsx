@@ -222,7 +222,6 @@ const ColorNeg: React.FC = () => {
         layer_height: '0.1',
         initial_layer_print_height: '0.1',
         sparse_infill_density: '100%', // 必须 100%
-        filament_colour: palette.map((p) => toHex(p.rgb)),
         line_width: lw,
         outer_wall_line_width: lw,
         inner_wall_line_width: lw,
@@ -233,7 +232,13 @@ const ColorNeg: React.FC = () => {
         support_line_width: lw,
       };
       const u8 = await pack3mf('color-positive', objects, { title: baseName }, {
+        // 把所有颜色合成一个组合体（单个 build item），各色互不相对位移
+        assembleAsOne: true,
+        // 按调色板长度重排料表（RGBKW=5 色时模板的 4 根料会被正确扩展到 5），
+        // 否则模型引用第 5 槽会让 Bambu 重置料表、丢弃下面这些工艺参数
+        filaments: palette.map((p) => toHex(p.rgb)),
         projectSettingsOverrides: overrides,
+        markModified: Object.keys(overrides),
       });
       saveBlob(u8, `${baseName}.3mf`);
       Message.success('多色 3MF 已导出');

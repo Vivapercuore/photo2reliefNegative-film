@@ -77,6 +77,44 @@ export interface Pack3mfOptions {
    * them as "modified vs system preset" — pair with `projectSettingsOverrides`.
    */
   markModified?: string[];
+  /**
+   * Combine **all objects on each plate into one assembled object** (parts of a
+   * single body) instead of emitting one independent `<object>`/build-item per
+   * input. Mirrors how Bambu Studio stores a multi-color model: a parent object
+   * whose `<components>` reference per-part child meshes, a single build item,
+   * and a `model_settings.config` object carrying one `<part>` per input (each
+   * with its own `extruder`). The whole assembly is placed by one transform, so
+   * the parts can never drift apart — use this for the多色正片 where every color
+   * must stay perfectly registered. Default false (relief/laser stay separate).
+   */
+  assembleAsOne?: boolean;
+  /**
+   * Per-filament colours (hex like `#FF0000`), one per filament slot. When set,
+   * **every per-filament array in `project_settings.config` is resized to this
+   * count** (the template ships 4 = CMYK; a 5-color palette needs 5) and the
+   * colour arrays are set — without this, a model that references slot 5 while
+   * the profile only declares 4 filaments makes Bambu reset the料表 and discard
+   * the custom 工艺参数. Non-per-filament arrays (machine limits, bed area,
+   * compatible printers) are left untouched.
+   */
+  filaments?: string[];
+  /**
+   * Emit `Metadata/custom_gcode_per_layer.xml` with these pause/insert points
+   * (单板 / plate 1). Each entry pauses the print when the layer topping out at
+   * `atZ` (mm) finishes — the 暂停层 feature. Default gcode is Bambu's pause
+   * `M400 U1`. Omit for no custom gcode.
+   */
+  pauses?: PauseLayer[];
+}
+
+/** One custom-gcode insertion (暂停层) for `custom_gcode_per_layer.xml`. */
+export interface PauseLayer {
+  /** Pause after the layer whose top reaches this Z (mm) is printed. */
+  atZ: number;
+  /** G-code to inject; default Bambu pause `M400 U1`. */
+  gcode?: string;
+  /** Active extruder/filament at the pause (1-based). Default 1. */
+  extruder?: number;
 }
 
 const DEFAULT_BED = { x: 256, y: 256 };
@@ -390,6 +428,261 @@ function buildModelSettingsXml(prepared: PreparedObject[]): string {
   );
 }
 
+/** RFC-4122-ish id for production-extension UUIDs (no crypto strength needed). */
+function uuid(): string {
+  const c = (globalThis as { crypto?: Crypto }).crypto;
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (ch) => {
+    const r = (Math.random() * 16) | 0;
+    return (ch === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
+const IDENTITY12 = '1 0 0 0 1 0 0 0 1 0 0 0';
+const IDENTITY16 = '1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1';
+
+/**
+ * Resize an F×F flush-volume matrix (row-major, mm³) to N×N. Diagonal stays 0;
+ * off-diagonal reuses the template value when the modulo-mapped pair is itself
+ * off-diagonal, else falls back to the template's max (a safe over-purge).
+ */
+function resizeFlushMatrix(v: unknown[], F: number, n: number): string[] {
+  const num = v.map((x) => Number(x) || 0);
+  let maxOff = 0;
+  for (let i = 0; i < F; i++)
+    for (let j = 0; j < F; j++)
+      if (i !== j) maxOff = Math.max(maxOff, num[i * F + j]);
+  const fallback = maxOff || 280;
+  const out: string[] = [];
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      if (i === j) out.push('0');
+      else {
+        const oi = i % F, oj = j % F;
+        out.push(String(oi !== oj ? num[oi * F + oj] : fallback));
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Make `project_settings.config` consistent for a palette of `colours.length`
+ * filaments. The template is authored for F (=4, CMYK) filaments; a 5-colour
+ * palette needs every per-filament array stretched to N so Bambu doesn't reject
+ * the料表. Arrays are recognised purely by length:
+ *   - len F   → per-filament  → resized to N  (`old[i % F]`)
+ *   - len 2F  → per-filament×2 variants → resized to 2N (filament pairs repeated)
+ *   - len F²  → flush matrix   → resized to N×N
+ * with an explicit blocklist for length-F arrays that are NOT per-filament
+ * (machine limits, bed/printable area, compatible printers). `filament_self_index`
+ * is rebuilt as the 1..N sequence (doubled for the two variants).
+ */
+function resizeFilaments(obj: Record<string, unknown>, colours: string[]): void {
+  const n = colours.length;
+  const F = Array.isArray(obj.filament_colour) ? obj.filament_colour.length : 4;
+  const blocked = (k: string) =>
+    k.startsWith('machine_max_') ||
+    k === 'bed_exclude_area' ||
+    k === 'printable_area' ||
+    k === 'print_compatible_printers';
+
+  if (n !== F) {
+    for (const k of Object.keys(obj)) {
+      const v = obj[k];
+      if (!Array.isArray(v) || blocked(k)) continue;
+      const L = v.length;
+      if (L === F) obj[k] = Array.from({ length: n }, (_, i) => v[i % F]);
+      else if (L === 2 * F)
+        obj[k] = Array.from({ length: 2 * n }, (_, i) => v[2 * (Math.floor(i / 2) % F) + (i % 2)]);
+      else if (L === F * F) obj[k] = resizeFlushMatrix(v, F, n);
+    }
+    if (Array.isArray(obj.filament_self_index))
+      obj.filament_self_index = Array.from({ length: 2 * n }, (_, i) => String(Math.floor(i / 2) + 1));
+  }
+
+  // Colours are always set from the palette (the template ships CMYK colours).
+  obj.filament_colour = colours.slice();
+  obj.filament_multi_colour = colours.slice();
+  if (Array.isArray(obj.default_filament_colour)) obj.default_filament_colour = colours.map(() => '');
+}
+
+interface AssembledFiles {
+  /** `3D/3dmodel.model` — parent objects (components) + one build item each. */
+  rootModel: string;
+  /** `3D/Objects/colorparts.model` — the per-part child meshes. */
+  childModel: string;
+  /** `3D/_rels/3dmodel.model.rels` — links the root model to the child file. */
+  rels: string;
+  /** `Metadata/model_settings.config` — one object per plate, N parts each. */
+  modelSettings: string;
+}
+
+/**
+ * Build the "assembled" package files: every object on a plate becomes a `<part>`
+ * of one parent object, so the parts are placed by a single transform and stay
+ * registered. Structure mirrors a Bambu Studio multi-color export (production
+ * extension + a child `.model` file holding the part meshes).
+ */
+function buildAssembled(
+  prepared: PreparedObject[],
+  metaBlock: string,
+  assemblyName: string
+): AssembledFiles {
+  const CHILD_PATH = '/3D/Objects/colorparts.model';
+
+  // Group by plate, preserving input order (= palette order).
+  const byPlate = new Map<number, PreparedObject[]>();
+  for (const p of prepared) {
+    const list = byPlate.get(p.plate);
+    if (list) list.push(p);
+    else byPlate.set(p.plate, [p]);
+  }
+  const plateIds = Array.from(byPlate.keys()).sort((a, b) => a - b);
+
+  interface Member { childId: number; part: PreparedObject }
+  interface Asm { assemblyId: number; tx: number; ty: number; tz: number; members: Member[] }
+
+  // Child object ids 1..M (across all plates), then assembly ids M+1..M+P.
+  const childObjs: string[] = [];
+  const asms: Asm[] = [];
+  let childId = 0;
+  for (const plateId of plateIds) {
+    const parts = byPlate.get(plateId)!;
+    const members: Member[] = parts.map((part) => {
+      childId++;
+      childObjs.push(`  <object id="${childId}" p:UUID="${uuid()}" type="model">\n${part.mesh.xml}\n  </object>`);
+      return { childId, part };
+    });
+    // All parts of a plate share one placement (layoutPlate guarantees this).
+    asms.push({ assemblyId: 0, tx: parts[0].tx, ty: parts[0].ty, tz: parts[0].tz, members });
+  }
+  let assemblyId = childId;
+  for (const a of asms) a.assemblyId = ++assemblyId;
+
+  const rootObjects = asms
+    .map((a) => {
+      const comps = a.members
+        .map(
+          (m) =>
+            `    <component p:path="${CHILD_PATH}" objectid="${m.childId}" p:UUID="${uuid()}" transform="${IDENTITY12}"/>`
+        )
+        .join('\n');
+      return `  <object id="${a.assemblyId}" p:UUID="${uuid()}" type="model">\n   <components>\n${comps}\n   </components>\n  </object>`;
+    })
+    .join('\n');
+
+  const buildItems = asms
+    .map(
+      (a) =>
+        `  <item objectid="${a.assemblyId}" p:UUID="${uuid()}" transform="1 0 0 0 1 0 0 0 1 ${fmt(a.tx)} ${fmt(a.ty)} ${fmt(a.tz)}" printable="1"/>`
+    )
+    .join('\n');
+
+  const rootModel =
+    `<?xml version="1.0" encoding="UTF-8"?>\n` +
+    `<model unit="millimeter" xml:lang="en-US" ` +
+    `xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" ` +
+    `xmlns:BambuStudio="http://schemas.bambulab.com/package/2021" ` +
+    `xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06" ` +
+    `requiredextensions="p">\n` +
+    `${metaBlock}\n` +
+    ` <resources>\n${rootObjects}\n </resources>\n` +
+    ` <build p:UUID="${uuid()}">\n${buildItems}\n </build>\n` +
+    `</model>`;
+
+  const childModel =
+    `<?xml version="1.0" encoding="UTF-8"?>\n` +
+    `<model unit="millimeter" xml:lang="en-US" ` +
+    `xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" ` +
+    `xmlns:BambuStudio="http://schemas.bambulab.com/package/2021" ` +
+    `xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06">\n` +
+    ` <metadata name="BambuStudio:3mfVersion">1</metadata>\n` +
+    ` <resources>\n${childObjs.join('\n')}\n </resources>\n` +
+    ` <build/>\n` +
+    `</model>`;
+
+  const rels =
+    `<?xml version="1.0" encoding="UTF-8"?>\n` +
+    `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n` +
+    ` <Relationship Target="${CHILD_PATH}" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>\n` +
+    `</Relationships>`;
+
+  const objBlocks = asms
+    .map((a) => {
+      const parts = a.members
+        .map(
+          (m) =>
+            `    <part id="${m.childId}" subtype="normal_part">\n` +
+            `      <metadata key="name" value="${escapeXml(m.part.name)}"/>\n` +
+            `      <metadata key="matrix" value="${IDENTITY16}"/>\n` +
+            `      <metadata key="extruder" value="${m.part.extruder}"/>\n` +
+            `      <mesh_stat face_count="${m.part.mesh.triangleCount}" edges_fixed="0" degenerate_facets="0" facets_removed="0" facets_reversed="0" backwards_edges="0"/>\n` +
+            `    </part>`
+        )
+        .join('\n');
+      const objExtruder = a.members[0]?.part.extruder ?? 1;
+      const faceTotal = a.members.reduce((s, m) => s + m.part.mesh.triangleCount, 0);
+      return (
+        `  <object id="${a.assemblyId}">\n` +
+        `    <metadata key="name" value="${escapeXml(assemblyName)}"/>\n` +
+        `    <metadata key="extruder" value="${objExtruder}"/>\n` +
+        `    <metadata face_count="${faceTotal}"/>\n` +
+        `${parts}\n` +
+        `  </object>`
+      );
+    })
+    .join('\n');
+
+  const plateBlocks = asms
+    .map(
+      (a, idx) =>
+        `  <plate>\n` +
+        `    <metadata key="plater_id" value="${idx + 1}"/>\n` +
+        `    <metadata key="plater_name" value=""/>\n` +
+        `    <metadata key="locked" value="false"/>\n` +
+        `    <metadata key="filament_map_mode" value="Auto For Flush"/>\n` +
+        `    <model_instance>\n` +
+        `      <metadata key="object_id" value="${a.assemblyId}"/>\n` +
+        `      <metadata key="instance_id" value="0"/>\n` +
+        `    </model_instance>\n` +
+        `  </plate>`
+    )
+    .join('\n');
+
+  const assembleItems = asms
+    .map(
+      (a) =>
+        `   <assemble_item object_id="${a.assemblyId}" instance_id="0" transform="1 0 0 0 1 0 0 0 1 ${fmt(a.tx)} ${fmt(a.ty)} ${fmt(a.tz)}" offset="0 0 0" />`
+    )
+    .join('\n');
+
+  const modelSettings =
+    `<?xml version="1.0" encoding="UTF-8"?>\n` +
+    `<config>\n${objBlocks}\n` +
+    `${plateBlocks}\n` +
+    `  <assemble>\n${assembleItems}\n  </assemble>\n` +
+    `</config>`;
+
+  return { rootModel, childModel, rels, modelSettings };
+}
+
+/** `Metadata/custom_gcode_per_layer.xml` — the 暂停层 / custom-gcode block. */
+function buildCustomGcode(pauses: PauseLayer[]): string {
+  const layers = pauses
+    .map(
+      (p) =>
+        `<layer top_z="${fmt(p.atZ)}" type="1" extruder="${p.extruder ?? 1}" color="" extra="" gcode="${escapeXml(p.gcode ?? 'M400 U1')}"/>`
+    )
+    .join('\n');
+  return (
+    `<?xml version="1.0" encoding="utf-8"?>\n` +
+    `<custom_gcodes_per_layer>\n<plate>\n<plate_info id="1"/>\n` +
+    `${layers}\n` +
+    `<mode value="MultiAsSingle"/>\n</plate>\n</custom_gcodes_per_layer>`
+  );
+}
+
 async function fetchText(url: string, required: boolean): Promise<string | null> {
   let res: Response;
   try {
@@ -456,8 +749,12 @@ export async function pack3mf(
   }
 
   let projectSettingsText = projectSettings as string;
-  if (options.projectSettingsOverrides || options.markModified) {
+  if (options.projectSettingsOverrides || options.markModified || options.filaments?.length) {
     const obj = JSON.parse(projectSettingsText);
+    // Resize the料表 to the palette first, then let explicit overrides win.
+    if (options.filaments?.length) {
+      resizeFilaments(obj, options.filaments);
+    }
     if (options.projectSettingsOverrides) {
       Object.assign(obj, options.projectSettingsOverrides);
     }
@@ -474,13 +771,32 @@ export async function pack3mf(
   const files: Zippable = {
     '[Content_Types].xml': strToU8(CONTENT_TYPES),
     '_rels/.rels': strToU8(ROOT_RELS),
-    '3D/3dmodel.model': strToU8(buildModelXml(prepared, metaBlock)),
     'Metadata/project_settings.config': strToU8(projectSettingsText),
-    'Metadata/model_settings.config': strToU8(buildModelSettingsXml(prepared)),
     'Metadata/slice_info.config': strToU8(SLICE_INFO),
   };
+
+  if (options.assembleAsOne) {
+    // One assembled object per plate (parts kept registered, no relative drift).
+    const { rootModel, childModel, rels, modelSettings } = buildAssembled(
+      prepared,
+      metaBlock,
+      meta.title || '组合体'
+    );
+    files['3D/3dmodel.model'] = strToU8(rootModel);
+    files['3D/Objects/colorparts.model'] = strToU8(childModel);
+    files['3D/_rels/3dmodel.model.rels'] = strToU8(rels);
+    files['Metadata/model_settings.config'] = strToU8(modelSettings);
+  } else {
+    // One independent object + build item per input (relief / laser).
+    files['3D/3dmodel.model'] = strToU8(buildModelXml(prepared, metaBlock));
+    files['Metadata/model_settings.config'] = strToU8(buildModelSettingsXml(prepared));
+  }
+
   if (filamentSettings) {
     files['Metadata/filament_settings_1.config'] = strToU8(filamentSettings);
+  }
+  if (options.pauses?.length) {
+    files['Metadata/custom_gcode_per_layer.xml'] = strToU8(buildCustomGcode(options.pauses));
   }
   return zipSync(files);
 }
