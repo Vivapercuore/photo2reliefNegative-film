@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { LacModel, Plate, Loop, Pt } from './parseLac';
+import { LacModel, Plate, Loop, Pt, RasterPiece, Mat, applyMat, invertMat, compose } from './parseLac';
 
 /** Near-white base material color for all cut bodies (easier to read in 3D). */
 export const BASE_COLOR = '#ededea';
@@ -587,6 +587,158 @@ function strokePolyline(pts: Pt[], width: number): Ribbon | null {
   return { outer: left.concat(right.reverse()) };
 }
 
+/** Longest-edge resolution (cells) of an image relief slab grid. */
+const IMAGE_GRID = 320;
+
+/**
+ * Build one raster engrave image as a watertight relief slab: a full-thickness
+ * board whose top surface is recessed per pixel darkness (black = deepest,
+ * scaled by the image process energy exactly like a line engrave; transparent
+ * pixels leave the material untouched). Built directly in final world space
+ * (XZ ground plane, thickness up along +Y) with the same topology as the
+ * relief module's heightfield, so it is manifold by construction.
+ */
+function buildImageSlab(
+  img: RasterPiece,
+  /** affine px → shape space (plate centering + scale + flip already applied) */
+  toShape: Mat,
+  /** board thickness in scene units */
+  fullDepth: number,
+  /** engrave depth of a fully black pixel, in scene units */
+  maxDepth: number,
+  offsetX: number,
+  offsetZ: number,
+  /** when set, bake per-vertex colors: base → engrave by depth (the color hint) */
+  tint?: { base: THREE.Color; engrave: THREE.Color }
+): THREE.BufferGeometry | null {
+  const gray = img.gray;
+  if (!gray) return null;
+
+  // Image footprint in world space. Shape y maps to world −z (the same flip
+  // finalize()'s rotateX(-π/2) applies to extruded path pieces).
+  let sx0 = Infinity, sx1 = -Infinity, sy0 = Infinity, sy1 = -Infinity;
+  for (const [px, py] of [[0, 0], [img.widthPx, 0], [img.widthPx, img.heightPx], [0, img.heightPx]]) {
+    const p = applyMat(toShape, px, py);
+    if (p.x < sx0) sx0 = p.x;
+    if (p.x > sx1) sx1 = p.x;
+    if (p.y < sy0) sy0 = p.y;
+    if (p.y > sy1) sy1 = p.y;
+  }
+  const wx0 = sx0 + offsetX;
+  const wz0 = -sy1 + offsetZ;
+  const w = sx1 - sx0;
+  const d = sy1 - sy0;
+  if (!(w > 1e-6) || !(d > 1e-6) || !(fullDepth > 0)) return null;
+
+  // Grid resolution: cap at IMAGE_GRID cells on the long edge (never finer
+  // than the decoded gray grid), proportional on the short edge.
+  const cellsLong = Math.min(IMAGE_GRID, Math.max(gray.cols, gray.rows));
+  const nx = Math.max(2, Math.round((cellsLong * w) / Math.max(w, d)) + 1); // vertices along X
+  const nz = Math.max(2, Math.round((cellsLong * d) / Math.max(w, d)) + 1); // vertices along Z
+  const dx = w / (nx - 1);
+  const dz = d / (nz - 1);
+
+  // Engrave fraction at a world (X,Z) point: invert back to pixel coords and
+  // bilinear-sample the darkness grid (zero outside the image bounds).
+  const inv = invertMat(toShape);
+  const frac = (X: number, Z: number): number => {
+    const p = applyMat(inv, X - offsetX, -(Z - offsetZ));
+    const gu = (p.x / img.widthPx) * gray.cols - 0.5;
+    const gv = (p.y / img.heightPx) * gray.rows - 0.5;
+    const c0 = Math.floor(gu);
+    const r0 = Math.floor(gv);
+    const fu = gu - c0;
+    const fv = gv - r0;
+    const at = (r: number, c: number) =>
+      r < 0 || c < 0 || r >= gray.rows || c >= gray.cols ? 0 : gray.data[r * gray.cols + c];
+    return (
+      at(r0, c0) * (1 - fu) * (1 - fv) +
+      at(r0, c0 + 1) * fu * (1 - fv) +
+      at(r0 + 1, c0) * (1 - fu) * fv +
+      at(r0 + 1, c0 + 1) * fu * fv
+    );
+  };
+
+  // Top-surface heights (recessed by darkness); maxDepth ≤ 0.95×fullDepth so
+  // the slab never thins to zero.
+  const H = new Float32Array(nz * nx);
+  for (let r = 0; r < nz; r++) {
+    for (let c = 0; c < nx; c++) {
+      H[r * nx + c] = fullDepth - maxDepth * frac(wx0 + c * dx, wz0 + r * dz);
+    }
+  }
+
+  const h = (r: number, c: number) => H[r * nx + c];
+  const X = (c: number) => wx0 + c * dx;
+  const Z = (r: number) => wz0 + r * dz;
+
+  const topTris = (nx - 1) * (nz - 1) * 2;
+  const wallTris = (2 * (nx - 1) + 2 * (nz - 1)) * 2;
+  const positions = new Float32Array((topTris * 2 + wallTris) * 9);
+  // Per-vertex color hint: lerp base → engrave color by engrave fraction
+  // (gamma-lifted so shallow marks stay visible). Bottom/walls keep the base.
+  const colors = tint ? new Float32Array(positions.length) : null;
+  let o = 0;
+  let co = 0;
+  const tri = (
+    ax: number, ay: number, az: number,
+    bx: number, by: number, bz: number,
+    cx: number, cy: number, cz: number,
+    f0 = 0, f1 = 0, f2 = 0
+  ) => {
+    positions[o++] = ax; positions[o++] = ay; positions[o++] = az;
+    positions[o++] = bx; positions[o++] = by; positions[o++] = bz;
+    positions[o++] = cx; positions[o++] = cy; positions[o++] = cz;
+    if (colors && tint) {
+      for (const f of [f0, f1, f2]) {
+        const t = Math.pow(Math.max(0, Math.min(1, f)), 0.6);
+        colors[co++] = tint.base.r + (tint.engrave.r - tint.base.r) * t;
+        colors[co++] = tint.base.g + (tint.engrave.g - tint.base.g) * t;
+        colors[co++] = tint.base.b + (tint.engrave.b - tint.base.b) * t;
+      }
+    }
+  };
+  // engrave fraction back from a top-surface height
+  const fOf = (hh: number) => (maxDepth > 1e-9 ? (fullDepth - hh) / maxDepth : 0);
+
+  // Top surface (height field), facing +Y; bottom flat at y=0, facing −Y.
+  for (let r = 0; r < nz - 1; r++) {
+    for (let c = 0; c < nx - 1; c++) {
+      const x0 = X(c), x1 = X(c + 1), z0 = Z(r), z1 = Z(r + 1);
+      const h00 = h(r, c), h01 = h(r, c + 1), h10 = h(r + 1, c), h11 = h(r + 1, c + 1);
+      const f00 = fOf(h00), f01 = fOf(h01), f10 = fOf(h10), f11 = fOf(h11);
+      tri(x0, h00, z0, x0, h10, z1, x1, h11, z1, f00, f10, f11);
+      tri(x0, h00, z0, x1, h11, z1, x1, h01, z0, f00, f11, f01);
+      tri(x0, 0, z0, x1, 0, z1, x0, 0, z1);
+      tri(x0, 0, z0, x1, 0, z0, x1, 0, z1);
+    }
+  }
+  // Perimeter walls, wound outward (same pattern as relief/buildHeightfield).
+  for (let c = 0; c < nx - 1; c++) {
+    const x0 = X(c), x1 = X(c + 1);
+    let z = Z(0); // front edge, outward −Z
+    tri(x0, 0, z, x1, h(0, c + 1), z, x1, 0, z);
+    tri(x0, 0, z, x0, h(0, c), z, x1, h(0, c + 1), z);
+    z = Z(nz - 1); // back edge, outward +Z
+    tri(x0, 0, z, x1, 0, z, x1, h(nz - 1, c + 1), z);
+    tri(x0, 0, z, x1, h(nz - 1, c + 1), z, x0, h(nz - 1, c), z);
+  }
+  for (let r = 0; r < nz - 1; r++) {
+    const z0 = Z(r), z1 = Z(r + 1);
+    let x = X(0); // left edge, outward −X
+    tri(x, 0, z0, x, 0, z1, x, h(r + 1, 0), z1);
+    tri(x, 0, z0, x, h(r + 1, 0), z1, x, h(r, 0), z0);
+    x = X(nx - 1); // right edge, outward +X
+    tri(x, 0, z0, x, h(r + 1, nx - 1), z1, x, 0, z1);
+    tri(x, 0, z0, x, h(r, nx - 1), z0, x, h(r + 1, nx - 1), z1);
+  }
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  if (colors) geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  return geom;
+}
+
 /**
  * Build one plate's meshes into `group`, offset by (offsetX, offsetZ) in scene
  * space. Returns the plate build info; geometry is laid flat (XZ plane, Y up).
@@ -669,16 +821,20 @@ function buildPlate(
     /** preview-only mesh: shown in the viewer but excluded from export geometry */
     decorative = false,
     /** when set, the export geometry is also grouped under this part */
-    part?: PartBuild
+    part?: PartBuild,
+    /** geometry already in final world space (watertight) — skip rotate/translate/seal */
+    placed = false
   ) => {
-    // ExtrudeGeometry lies in XY (z = 0..depth) with thickness along +Z; rotate
-    // to lay flat on XZ ground with thickness up along +Y, then lift to baseY
-    // and move into the plate's grid cell. Baked so exported STL matches view.
-    geom.rotateX(-Math.PI / 2);
-    geom.translate(offsetX, baseY, offsetZ);
-    // Exported solids must be watertight: seal any open cap edges earcut left on
-    // self-intersecting source contours (preview-only meshes don't need it).
-    if (!decorative) sealOpenBoundaries(geom);
+    if (!placed) {
+      // ExtrudeGeometry lies in XY (z = 0..depth) with thickness along +Z; rotate
+      // to lay flat on XZ ground with thickness up along +Y, then lift to baseY
+      // and move into the plate's grid cell. Baked so exported STL matches view.
+      geom.rotateX(-Math.PI / 2);
+      geom.translate(offsetX, baseY, offsetZ);
+      // Exported solids must be watertight: seal any open cap edges earcut left on
+      // self-intersecting source contours (preview-only meshes don't need it).
+      if (!decorative) sealOpenBoundaries(geom);
+    }
     geom.computeVertexNormals();
     const pos = geom.getAttribute('position');
     if (!pos || pos.count === 0) {
@@ -686,8 +842,13 @@ function buildPlate(
       return;
     }
     triangleCount += pos.count / 3;
+    // A geometry carrying a 'color' attribute (the image slab's depth tint)
+    // renders with vertex colors; material color is then white so the baked
+    // colors show as-is. Final color = material × vertex color.
+    const hasVertexColors = !!geom.getAttribute('color');
     const material = new THREE.MeshStandardMaterial({
-      color,
+      color: hasVertexColors ? 0xffffff : color,
+      vertexColors: hasVertexColors,
       roughness: 0.85,
       metalness: 0,
       side: THREE.DoubleSide,
@@ -846,6 +1007,34 @@ function buildPlate(
         /* skip */
       }
     }
+  }
+
+  // Raster engrave images: each becomes its own relief slab part — a
+  // full-thickness board whose top surface is recessed per pixel darkness.
+  // (Always engraved: for a bitmap the relief IS the model, so the line-engrave
+  // groove toggle doesn't apply here.)
+  for (const img of plate.images) {
+    if (!img.gray) continue;
+    // px → shape space: the plate's centering/scale/flip mapping (same as
+    // tx/ty above, expressed as an affine) composed with the image placement.
+    const plateMap: Mat = [scale, 0, 0, flipY ? -scale : scale, -cx * scale, flipY ? cy * scale : -cy * scale];
+    const toShape = compose(plateMap, img.transform);
+    // Color hint: tint the engraved surface toward this process's palette
+    // color (deeper = stronger), matching the parameter table's row border.
+    const tintColor = showEngraveColors ? engraveColors[img.laser.processType] : undefined;
+    const slab = buildImageSlab(
+      img,
+      toShape,
+      fullDepth,
+      pieceDepth(img.laser.energy),
+      offsetX,
+      offsetZ,
+      tintColor ? { base: baseColor, engrave: tintColor } : undefined
+    );
+    if (!slab) continue;
+    const part: PartBuild = { name: `${img.name || 'image'}#${++partSeq}`, geometries: [] };
+    finalize(slab, 0, baseColor, false, part, true);
+    if (part.geometries.length) parts.push(part);
   }
 
   return {

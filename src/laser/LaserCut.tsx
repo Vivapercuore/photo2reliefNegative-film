@@ -18,6 +18,7 @@ import * as THREE from 'three';
 import './LaserCut.css';
 
 import { parseLac, LacModel } from './lac/parseLac';
+import { decodeLacImages } from './lac/decodeImages';
 import { buildModel, disposeBuild, BuildResult, BuildOptions, engraveColorAt } from './lac/buildMesh';
 import ModelViewer from './viewer/ModelViewer';
 import PathPreview from './viewer/PathPreview';
@@ -126,18 +127,24 @@ const LaserCut: React.FC = () => {
     largestPart: { x: number; y: number; maxEdge: number };
   } | null>(null);
 
-  const reparse = useCallback((bytes: Uint8Array) => {
+  const reparse = useCallback(async (bytes: Uint8Array) => {
     try {
       const m = parseLac(bytes);
+      // Raster engrave bitmaps need an async browser decode before building.
+      const imgWarnings = await decodeLacImages(m);
       setModel(m);
       setPlateSel(ALL_PLATES);
       const th = m.meta.thicknessMm ?? thickness;
       if (m.meta.thicknessMm) setThickness(m.meta.thicknessMm);
       // Auto-pick a depth ratio that keeps engrave grooves in a safe band.
       setDepthRatio(autoDepthRatio(m, th));
-      m.warnings.forEach((w) => Message.warning(w));
+      m.warnings.concat(imgWarnings).forEach((w) => Message.warning(w));
       const totalPieces = m.plates.reduce((s, p) => s + p.pieces.length, 0);
-      Message.success(`解析成功：${m.plates.length} 个盘，共 ${totalPieces} 个零件`);
+      const totalImages = m.plates.reduce((s, p) => s + p.images.length, 0);
+      Message.success(
+        `解析成功：${m.plates.length} 个盘，共 ${totalPieces} 个路径零件` +
+          (totalImages ? `、${totalImages} 张位图雕刻` : '')
+      );
     } catch (e: any) {
       setModel(null);
       Message.error(`解析失败：${e?.message || e}`);
@@ -151,13 +158,49 @@ const LaserCut: React.FC = () => {
         const bytes = new Uint8Array(ab);
         fileBytesRef.current = bytes;
         setFileName(file.name);
-        reparse(bytes);
+        await reparse(bytes);
       } catch (e: any) {
         Message.error(`读取文件失败：${e?.message || e}`);
       }
     },
     [reparse]
   );
+
+  // Removing the selected file clears EVERYTHING: cached bytes, parsed model
+  // (the model effect below then disposes the build and empties the preview),
+  // and every option back to its default.
+  const resetAll = useCallback(() => {
+    fileBytesRef.current = null;
+    setFileName('');
+    setModel(null);
+    setViewMode('3d');
+    setThickness(3);
+    setScale(1);
+    setFlipY(true);
+    setCutHoles(true);
+    setPlateSel(ALL_PLATES);
+    setEngraveAsGroove(true);
+    setShowEngraveColors(true);
+    setDepthRatio(1);
+    setWidthRatio(1);
+  }, []);
+
+  // Release decoded bitmaps when the model is replaced or cleared. Done via a
+  // prev-ref comparison (NOT an effect cleanup): under StrictMode's dev
+  // double-invoke a cleanup would close the bitmaps of the still-active model.
+  const prevModelRef = useRef<LacModel | null>(null);
+  useEffect(() => {
+    const prev = prevModelRef.current;
+    if (prev && prev !== model) {
+      for (const p of prev.plates) {
+        for (const im of p.images) {
+          im.bitmap?.close();
+          im.bitmap = undefined;
+        }
+      }
+    }
+    prevModelRef.current = model;
+  }, [model]);
 
   // (re)build the 3D model when the model or build options change
   useEffect(() => {
@@ -287,26 +330,34 @@ const LaserCut: React.FC = () => {
     [model]
   );
 
+  // Raster engrave bitmaps (built as relief slabs, depth driven by the same
+  // energy × depthRatio rule as engrave lines).
+  const imageCount = useMemo(
+    () => (model ? model.plates.reduce((s, p) => s + p.images.length, 0) : 0),
+    [model]
+  );
+
   // Laser energy summary + the resulting groove depth/width for the current
   // ratios, so the user sees what the physics-derived values actually are.
   const engraveInfo = useMemo(() => {
     if (!model) return null;
-    const eng = model.plates
-      .flatMap((p) => p.pieces)
-      .find((pc) => pc.process === 'engrave');
-    if (!eng) return null;
+    // line engrave first; otherwise fall back to a raster image's process
+    const engLaser =
+      model.plates.flatMap((p) => p.pieces).find((pc) => pc.process === 'engrave')?.laser ??
+      model.plates.flatMap((p) => p.images)[0]?.laser;
+    if (!engLaser) return null;
     const cutEnergy =
       model.meta.cutEnergy ??
       model.plates
         .flatMap((p) => p.pieces)
         .reduce((m, pc) => (pc.process === 'cut' ? Math.max(m, pc.laser.energy ?? 0) : m), 0);
-    const e = eng.laser.energy;
+    const e = engLaser.energy;
     const frac = e != null && cutEnergy > 0 ? e / cutEnergy : 0.3;
     const depthMm = Math.min(thickness * 0.95, frac * depthRatio * thickness) * scale;
     const widthMm = Math.max(0.05, (e != null ? e : 0.6) * widthRatio) * scale;
     return {
       cutPower: model.plates.flatMap((p) => p.pieces).find((pc) => pc.process === 'cut')?.laser,
-      engLaser: eng.laser,
+      engLaser,
       cutEnergy,
       depthMm,
       widthMm,
@@ -383,6 +434,7 @@ const LaserCut: React.FC = () => {
                 onChange={(list: any[]) => {
                   const f = list && list[list.length - 1];
                   if (f?.originFile) handleFile(f.originFile);
+                  else if (!list || !list.length) resetAll();
                 }}
                 tip="仅支持 .lac 文件"
               />
@@ -401,12 +453,15 @@ const LaserCut: React.FC = () => {
                     {engraveCount ? (
                       <Tag color="purple">{engraveCount} 条雕刻线</Tag>
                     ) : null}
+                    {imageCount ? (
+                      <Tag color="magenta">{imageCount} 张位图雕刻</Tag>
+                    ) : null}
                   </div>
                   <div className="laser-plate-list">
                     {model.plates.map((p) => (
                       <div key={p.index} className="laser-plate-row">
                         盘 {p.index}：{p.bbox.width.toFixed(0)} × {p.bbox.height.toFixed(0)} mm，
-                        {p.pieces.length} 件
+                        {p.pieces.length + p.images.length} 件
                       </div>
                     ))}
                   </div>
@@ -544,12 +599,23 @@ const LaserCut: React.FC = () => {
                   </div>
                 </List.Item>
 
-                {engraveCount ? (
+                {engraveCount || imageCount ? (
                   <List.Item key="engrave">
-                    <div className="title">雕刻线处理</div>
+                    <div className="title">雕刻处理</div>
                     <div className="describe">
-                      文件中有 {engraveCount} 条标记为“雕刻”（LaserLineEngrave）的线路——它们不是切穿，
-                      而是在材料表面刻痕。雕刻的深浅与粗细由激光的<strong>能量密度 = 功率 ÷ 速度 × 次数</strong>决定：
+                      {engraveCount ? (
+                        <>
+                          文件中有 {engraveCount} 条标记为“雕刻”（LaserLineEngrave）的线路——它们不是切穿，
+                          而是在材料表面刻痕。
+                        </>
+                      ) : null}
+                      {imageCount ? (
+                        <>
+                          文件中有 {imageCount} 张位图雕刻图像（LaserImageEngrave）——按像素灰度在表面
+                          生成浮雕：颜色越深、越不透明的像素下凹越深。
+                        </>
+                      ) : null}
+                      雕刻的深浅由激光的<strong>能量密度 = 功率 ÷ 速度 × 次数</strong>决定：
                       能量越高刻得越深越宽。下面的凹槽深度/宽度<strong>自动按文件中的功率、速度推算</strong>，
                       你只需用比例系数整体放大或缩小。
                     </div>
@@ -562,18 +628,23 @@ const LaserCut: React.FC = () => {
                         （能量 {engraveInfo.engLaser.energy != null ? engraveInfo.engLaser.energy.toFixed(2) : '—'}）
                       </div>
                     ) : null}
-                    <div className="laser-switch">
-                      <Switch
-                        checked={engraveAsGroove}
-                        onChange={(v: boolean | string | number) => setEngraveAsGroove(Boolean(v))}
-                      />{' '}
-                      <span>雕刻线生成为表面凹槽（减薄）</span>
-                    </div>
-                    <div className="describe">
-                      开启：在零件正面沿雕刻路径下沉出真实凹槽（影响导出的实体）。
-                      关闭：不改变厚度，仅用紫色细线在表面标出雕刻位置，便于辨认。
-                    </div>
-                    {engraveAsGroove ? (
+                    {engraveCount ? (
+                      <>
+                        <div className="laser-switch">
+                          <Switch
+                            checked={engraveAsGroove}
+                            onChange={(v: boolean | string | number) => setEngraveAsGroove(Boolean(v))}
+                          />{' '}
+                          <span>雕刻线生成为表面凹槽（减薄）</span>
+                        </div>
+                        <div className="describe">
+                          开启：在零件正面沿雕刻路径下沉出真实凹槽（影响导出的实体）。
+                          关闭：不改变厚度，仅用紫色细线在表面标出雕刻位置，便于辨认。
+                          {imageCount ? '（位图浮雕不受此开关影响，始终生成。）' : ''}
+                        </div>
+                      </>
+                    ) : null}
+                    {engraveAsGroove || imageCount ? (
                       <div className="laser-engrave-params">
                         <div className="laser-param">
                           <span>功率深度比例</span>

@@ -45,6 +45,27 @@ export interface Piece {
   laser: LaserParams;
 }
 
+/**
+ * A raster (bitmap) engrave object placed on a plate — e.g. a photo the laser
+ * raster-engraves into the material ("LaserImageEngrave"). Some .lac designs
+ * (like coin/plaque engravings) contain ONLY such bitmaps and no vector paths.
+ */
+export interface RasterPiece {
+  objId: number | string;
+  name: string;
+  /** affine mapping image pixel coords (0..widthPx, 0..heightPx) → plate-local mm */
+  transform: Mat;
+  widthPx: number;
+  heightPx: number;
+  /** raw PNG bytes from the package; decoded later in the browser */
+  pngBytes: Uint8Array;
+  laser: LaserParams;
+  /** decoded bitmap for the 2D preview (filled by decodeLacImages) */
+  bitmap?: ImageBitmap;
+  /** engrave fraction per cell, 0..1 = darkness × alpha, row-major (filled by decodeLacImages) */
+  gray?: { data: Float32Array; cols: number; rows: number };
+}
+
 export interface Bbox {
   minX: number;
   minY: number;
@@ -59,6 +80,8 @@ export interface Plate {
   index: number;
   name: string;
   pieces: Piece[];
+  /** raster engrave bitmaps placed on this plate */
+  images: RasterPiece[];
   bbox: Bbox;
 }
 
@@ -99,7 +122,8 @@ export interface LacModel {
   warnings: string[];
 }
 
-type Mat = [number, number, number, number, number, number]; // a b c d e f
+/** 2D affine matrix [a b c d e f]: x' = a·x + c·y + e, y' = b·x + d·y + f */
+export type Mat = [number, number, number, number, number, number];
 const IDENTITY: Mat = [1, 0, 0, 1, 0, 0];
 
 function parseTransform(s?: string): Mat {
@@ -112,7 +136,7 @@ function parseTransform(s?: string): Mat {
 }
 
 /** Compose two affine matrices: result applies `child` first, then `parent`. */
-function compose(p: Mat, c: Mat): Mat {
+export function compose(p: Mat, c: Mat): Mat {
   return [
     p[0] * c[0] + p[2] * c[1],
     p[1] * c[0] + p[3] * c[1],
@@ -123,8 +147,22 @@ function compose(p: Mat, c: Mat): Mat {
   ];
 }
 
-function applyMat(m: Mat, x: number, y: number): Pt {
+export function applyMat(m: Mat, x: number, y: number): Pt {
   return { x: m[0] * x + m[2] * y + m[4], y: m[1] * x + m[3] * y + m[5] };
+}
+
+/** Inverse of an affine matrix (returns identity for a degenerate matrix). */
+export function invertMat(m: Mat): Mat {
+  const det = m[0] * m[3] - m[1] * m[2];
+  if (!Number.isFinite(det) || Math.abs(det) < 1e-12) return IDENTITY;
+  return [
+    m[3] / det,
+    -m[1] / det,
+    -m[2] / det,
+    m[0] / det,
+    (m[2] * m[5] - m[3] * m[4]) / det,
+    (m[1] * m[4] - m[0] * m[5]) / det,
+  ];
 }
 
 function parseColor(c?: string): [number, number, number, number] {
@@ -138,10 +176,18 @@ function parseColor(c?: string): [number, number, number, number] {
 }
 
 /**
- * Parse an SVG path-data string into an array of sub-paths (loops of points).
+ * Parse a Bambu path-data string into an array of sub-paths (loops of points).
  * Bambu cut data is mostly M/L/C/Z; cubic (C/S) and quadratic (Q/T) Béziers are
  * adaptively flattened into line segments so curved outlines stay smooth.
  * Elliptical arcs (A) are approximated by their end point (rare in this data).
+ *
+ * ⚠ The syntax looks like SVG but the C command's parameter order is NOT SVG:
+ * Bambu stores cubics as (end, c1, c2) — endpoint FIRST — where SVG uses
+ * (c1, c2, end). Verified against circle holes built from 4 quarter-arc
+ * cubics (kappa ≈ 0.55·r) and confirmed uniform across every sample file:
+ * the first pair is always the farthest from the current point (the true
+ * endpoint), the second hugs the current point (the true c1). Reading them
+ * in SVG order turns every circle into a concave "pillow" shape.
  */
 export function parsePathData(d: string): Loop[] {
   const loops: Loop[] = [];
@@ -248,15 +294,16 @@ export function parsePathData(d: string): Loop[] {
         cx = start.x; cy = start.y; prevCurve = '';
         break;
       case 'C': {
-        const x1 = num(), y1 = num(), x2 = num(), y2 = num(), x3 = num(), y3 = num();
+        // Bambu order: endpoint first, then the two control points (see doc).
+        const x3 = num(), y3 = num(), x1 = num(), y1 = num(), x2 = num(), y2 = num();
         cubic(x1, y1, x2, y2, x3, y3);
         pcx = x2; pcy = y2; prevCurve = 'C';
         break;
       }
       case 'c': {
+        const x3 = cx + num(), y3 = cy + num();
         const x1 = cx + num(), y1 = cy + num();
         const x2 = cx + num(), y2 = cy + num();
-        const x3 = cx + num(), y3 = cy + num();
         cubic(x1, y1, x2, y2, x3, y3);
         pcx = x2; pcy = y2; prevCurve = 'C';
         break;
@@ -322,6 +369,90 @@ export function parsePathData(d: string): Loop[] {
   return loops;
 }
 
+/** Max endpoint gap (path-local units ≈ mm) bridged when chaining sub-paths.
+ *  Real matches sit below 0.001 (p90 ≈ 0.0004 in sample files); genuine breaks
+ *  between separate contours are ≥ 1mm, so 0.02 is safely in between. */
+const CHAIN_EPS = 0.02;
+
+/**
+ * Re-join exploded sub-paths into continuous contours. Some .lac exporters
+ * store each part outline as hundreds of unordered 2-4 point line fragments
+ * rather than one closed path; treating each fragment as its own contour
+ * yields heaps of degenerate slivers instead of solid parts. Sub-paths whose
+ * endpoints coincide (within eps) are chained end-to-end via a greedy
+ * nearest-endpoint walk over a spatial hash; already-closed sub-paths pass
+ * through untouched.
+ */
+function chainLoops(loops: Loop[], eps = CHAIN_EPS): Loop[] {
+  const closed: Loop[] = [];
+  const open: Loop[] = [];
+  const near2 = eps * eps;
+  const d2 = (a: Pt, b: Pt) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
+  for (const lp of loops) {
+    if (lp.length >= 3 && d2(lp[0], lp[lp.length - 1]) <= near2) closed.push(lp);
+    else open.push(lp);
+  }
+  if (open.length <= 1) return loops;
+
+  // Spatial hash of every open sub-path's two endpoints. Cell size = eps, so a
+  // match is always within the 3×3 cell neighborhood of the query point.
+  const endpoint = (i: number, end: 0 | 1) => (end === 0 ? open[i][0] : open[i][open[i].length - 1]);
+  const cellKey = (p: Pt) => `${Math.round(p.x / eps)}_${Math.round(p.y / eps)}`;
+  const buckets = new Map<string, [number, 0 | 1][]>();
+  for (let i = 0; i < open.length; i++) {
+    for (const end of [0, 1] as const) {
+      const k = cellKey(endpoint(i, end));
+      const arr = buckets.get(k);
+      if (arr) arr.push([i, end]);
+      else buckets.set(k, [[i, end]]);
+    }
+  }
+  const used = new Array(open.length).fill(false);
+  const findNear = (p: Pt): [number, 0 | 1] | null => {
+    const bx = Math.round(p.x / eps);
+    const by = Math.round(p.y / eps);
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const arr = buckets.get(`${bx + dx}_${by + dy}`);
+        if (!arr) continue;
+        for (const [i, end] of arr) {
+          if (!used[i] && d2(p, endpoint(i, end)) <= near2) return [i, end];
+        }
+      }
+    }
+    return null;
+  };
+
+  const out: Loop[] = [...closed];
+  for (let i = 0; i < open.length; i++) {
+    if (used[i]) continue;
+    used[i] = true;
+    let chain = open[i].slice();
+    // grow at the tail until the chain closes or runs out of matches…
+    for (;;) {
+      if (chain.length >= 3 && d2(chain[0], chain[chain.length - 1]) <= near2) break;
+      const hit = findNear(chain[chain.length - 1]);
+      if (!hit) break;
+      const [j, end] = hit;
+      used[j] = true;
+      const seg = end === 1 ? open[j].slice().reverse() : open[j];
+      chain = chain.concat(seg.slice(1));
+    }
+    // …then grow at the head the same way
+    for (;;) {
+      if (chain.length >= 3 && d2(chain[0], chain[chain.length - 1]) <= near2) break;
+      const hit = findNear(chain[0]);
+      if (!hit) break;
+      const [j, end] = hit;
+      used[j] = true;
+      const seg = end === 0 ? open[j].slice().reverse() : open[j];
+      chain = seg.slice(0, -1).concat(chain);
+    }
+    out.push(chain);
+  }
+  return out;
+}
+
 function emptyBbox(): Bbox {
   return { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity, width: 0, height: 0 };
 }
@@ -341,26 +472,36 @@ function finalizeBbox(b: Bbox) {
   b.height = b.maxY - b.minY;
 }
 
+/** Shared lookups threaded through the component tree walk. */
+interface CollectCtx {
+  byId: Record<string, any>;
+  laserMap: Record<string, LaserParams>;
+  /** obj_id → its canvas-level placement (carries a RasterImage's px→mm scale) */
+  canvasPlace: Record<string, Mat>;
+  /** lowercased basename → raw bytes of the 2D/Objects/* image entries */
+  imageFiles: Record<string, Uint8Array>;
+}
+
 /**
- * Recursively resolve a component (which may target a PathObject or an
- * AttachedGroup of nested components) into placed pieces, accumulating the
- * affine transform down the tree.
+ * Recursively resolve a component (a PathObject, a RasterImage, or a group of
+ * nested components) into placed pieces/images, accumulating the affine
+ * transform down the tree.
  */
 function collectComponent(
   objId: number | string,
   worldT: Mat,
-  byId: Record<string, any>,
-  laserMap: Record<string, LaserParams>,
+  ctx: CollectCtx,
   out: Piece[],
+  images: RasterPiece[],
   bbox: Bbox,
   depth = 0
 ) {
   if (depth > 32) return; // guard against pathological cycles
-  const o = byId[objId];
+  const o = ctx.byId[objId];
   if (!o) return;
 
   if (o.type === 'PathObject' && typeof o.path_data === 'string') {
-    const rawLoops = parsePathData(o.path_data);
+    const rawLoops = chainLoops(parsePathData(o.path_data));
     if (!rawLoops.length) return;
     const loops = rawLoops.map((lp) =>
       lp.map((p) => {
@@ -369,7 +510,7 @@ function collectComponent(
         return wp;
       })
     );
-    const laser: LaserParams = laserMap[o.obj_id] || { processType: 'LaserLineCut' };
+    const laser: LaserParams = ctx.laserMap[o.obj_id] || { processType: 'LaserLineCut' };
     out.push({
       objId: o.obj_id,
       name: o.name || '',
@@ -382,15 +523,46 @@ function collectComponent(
     return;
   }
 
-  if (o.type === 'AttachedGroup' && Array.isArray(o.components)) {
+  if (o.type === 'RasterImage') {
+    const wPx = Number(o.width) || 0;
+    const hPx = Number(o.height) || 0;
+    const pngBytes = ctx.imageFiles[String(o.file_name || '').toLowerCase()];
+    if (!wPx || !hPx || !pngBytes) return;
+    // Plate layouts store a RasterImage's placement with UNIT scale — the
+    // px→mm scaling lives only on the object's canvas placement. Compose it in
+    // unless this transform already carries a non-unit scale of its own.
+    const scaleOf = (m: Mat) => Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]));
+    let t: Mat = worldT.slice() as Mat;
+    if (Math.abs(scaleOf(worldT) - 1) < 0.01) {
+      const place = ctx.canvasPlace[o.obj_id];
+      const s = place ? scaleOf(place) : 1;
+      if (s > 0 && Math.abs(s - 1) > 1e-6) t = compose(worldT, [s, 0, 0, s, 0, 0]);
+    }
+    growBbox(bbox, applyMat(t, 0, 0));
+    growBbox(bbox, applyMat(t, wPx, 0));
+    growBbox(bbox, applyMat(t, wPx, hPx));
+    growBbox(bbox, applyMat(t, 0, hPx));
+    images.push({
+      objId: o.obj_id,
+      name: o.name || '',
+      transform: t,
+      widthPx: wPx,
+      heightPx: hPx,
+      pngBytes,
+      laser: ctx.laserMap[o.obj_id] || { processType: 'LaserImageEngrave' },
+    });
+    return;
+  }
+
+  if ((o.type === 'AttachedGroup' || o.type === 'ModelGroup') && Array.isArray(o.components)) {
     for (const child of o.components) {
-      collectComponent(child.obj_id, compose(worldT, parseTransform(child.transform)), byId, laserMap, out, bbox, depth + 1);
+      collectComponent(child.obj_id, compose(worldT, parseTransform(child.transform)), ctx, out, images, bbox, depth + 1);
     }
   }
 }
 
-/** Translate a plate's pieces so its content starts near the origin (0,0). */
-function localizePlate(pieces: Piece[], bbox: Bbox) {
+/** Translate a plate's pieces/images so its content starts near the origin (0,0). */
+function localizePlate(pieces: Piece[], images: RasterPiece[], bbox: Bbox) {
   const dx = bbox.minX;
   const dy = bbox.minY;
   for (const piece of pieces) {
@@ -400,6 +572,10 @@ function localizePlate(pieces: Piece[], bbox: Bbox) {
         p.y -= dy;
       }
     }
+  }
+  for (const img of images) {
+    img.transform[4] -= dx;
+    img.transform[5] -= dy;
   }
   bbox.maxX -= dx;
   bbox.maxY -= dy;
@@ -411,10 +587,11 @@ function localizePlate(pieces: Piece[], bbox: Bbox) {
 export function parseLac(buf: Uint8Array): LacModel {
   const warnings: string[] = [];
 
-  // Decompress only the small text entries (the package also has tens of MB of
-  // preview images we don't need).
+  // Decompress only the entries we need: the small text entries, plus the
+  // 2D/Objects/* bitmaps that raster engrave designs reference (the package
+  // also has tens of MB of preview images we skip).
   const files = unzipSync(buf, {
-    filter: (f) => /\.(json|config|xml|rels)$/i.test(f.name),
+    filter: (f) => /\.(json|config|xml|rels)$/i.test(f.name) || /(^|\/)2d\/objects\//i.test(f.name),
   });
 
   const findKey = (re: RegExp) => Object.keys(files).find((k) => re.test(k));
@@ -474,11 +651,21 @@ export function parseLac(buf: Uint8Array): LacModel {
     return { processType: pt };
   };
 
-  // Index every object by id (across all canvases).
+  // Index every object by id (across all canvases), plus each object's
+  // canvas-level placement (needed to recover a RasterImage's px→mm scale).
   const byId: Record<string, any> = {};
+  const canvasPlace: Record<string, Mat> = {};
   const canvases: any[] = Array.isArray(model.canvas_list) ? model.canvas_list : [];
   for (const cv of canvases) {
     for (const o of cv.obj_list || []) byId[o.obj_id] = o;
+    for (const c of cv.components || []) canvasPlace[c.obj_id] = parseTransform(c.transform);
+  }
+
+  // Raster engrave bitmaps live as separate 2D/Objects/* entries, referenced
+  // from RasterImage objects by file_name.
+  const imageFiles: Record<string, Uint8Array> = {};
+  for (const k of Object.keys(files)) {
+    if (/(^|\/)2d\/objects\//i.test(k)) imageFiles[k.replace(/^.*\//, '').toLowerCase()] = files[k];
   }
 
   const plates: Plate[] = [];
@@ -509,42 +696,48 @@ export function parseLac(buf: Uint8Array): LacModel {
     }
   }
 
+  const ctx: CollectCtx = { byId, laserMap, canvasPlace, imageFiles };
+
   if (Array.isArray(platesSpec) && platesSpec.length) {
     meta.source = 'project_settings';
     platesSpec.forEach((pl, i) => {
       const pieces: Piece[] = [];
+      const images: RasterPiece[] = [];
       const bbox = emptyBbox();
       for (const comp of pl.components || []) {
-        collectComponent(comp.obj_id, parseTransform(comp.transform), byId, laserMap, pieces, bbox);
+        collectComponent(comp.obj_id, parseTransform(comp.transform), ctx, pieces, images, bbox);
       }
       finalizeBbox(bbox);
-      if (pieces.length) {
-        localizePlate(pieces, bbox);
-        plates.push({ index: i + 1, name: pl.name || '', pieces, bbox });
+      if (pieces.length || images.length) {
+        localizePlate(pieces, images, bbox);
+        plates.push({ index: i + 1, name: pl.name || '', pieces, images, bbox });
       }
     });
   }
 
-  // Fallback: no usable project_settings → treat every PathObject as one plate
-  // (identity placement). Geometry won't be physically positioned but is still
-  // viewable/exportable.
+  // Fallback: no usable project_settings → treat every object as one plate.
+  // Geometry won't be physically positioned but is still viewable/exportable.
+  // RasterImages use their canvas placement (it carries their px→mm scale).
   if (!plates.length) {
     meta.source = 'flat';
     const pieces: Piece[] = [];
+    const images: RasterPiece[] = [];
     const bbox = emptyBbox();
     for (const cv of canvases) {
       for (const o of cv.obj_list || []) {
-        if (o.type === 'PathObject') collectComponent(o.obj_id, IDENTITY, byId, laserMap, pieces, bbox);
+        if (o.type === 'PathObject') collectComponent(o.obj_id, IDENTITY, ctx, pieces, images, bbox);
+        else if (o.type === 'RasterImage')
+          collectComponent(o.obj_id, canvasPlace[o.obj_id] || IDENTITY, ctx, pieces, images, bbox);
       }
     }
     finalizeBbox(bbox);
-    if (pieces.length) {
-      localizePlate(pieces, bbox);
-      plates.push({ index: 1, name: '', pieces, bbox });
+    if (pieces.length || images.length) {
+      localizePlate(pieces, images, bbox);
+      plates.push({ index: 1, name: '', pieces, images, bbox });
     }
   }
 
-  if (!plates.length) warnings.push('没有解析到任何闭合路径几何');
+  if (!plates.length) warnings.push('没有解析到任何路径或位图几何');
 
   // Re-derive cut vs engrave from laser ENERGY, not just the process-type name.
   // Some designs (e.g. line-cut files) label every path "LaserLineEngrave" even
@@ -580,6 +773,14 @@ export function parseLac(buf: Uint8Array): LacModel {
     meta.engraveEnergy = engE;
   }
 
+  // No through-cut path in the file (e.g. a pure raster engrave design) → take
+  // the material's LaserLineCut config as the depth baseline, so engrave/image
+  // depths still scale off a physically meaningful "cuts clean through" energy.
+  if (meta.cutEnergy == null) {
+    const e = energyOf('LaserLineCut').energy;
+    if (e != null) meta.cutEnergy = e;
+  }
+
   // Tally distinct processes from the resolved pieces (counts match geometry).
   const usageByType = new Map<string, ProcessUsage>();
   for (const pl of plates) {
@@ -588,6 +789,12 @@ export function parseLac(buf: Uint8Array): LacModel {
       const u = usageByType.get(key);
       if (u) u.count++;
       else usageByType.set(key, { params: pc.laser, process: pc.process, count: 1 });
+    }
+    for (const img of pl.images) {
+      const key = img.laser.processType || 'unknown';
+      const u = usageByType.get(key);
+      if (u) u.count++;
+      else usageByType.set(key, { params: img.laser, process: 'engrave', count: 1 });
     }
   }
   const processes = Array.from(usageByType.values()).sort(

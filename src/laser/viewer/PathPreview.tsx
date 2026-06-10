@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { LacModel, Plate, Pt } from '../lac/parseLac';
+import { LacModel, Plate, Pt, Mat, applyMat, compose } from '../lac/parseLac';
 import { engraveColorAt, engraveProcessOrder } from '../lac/buildMesh';
 
 interface Props {
@@ -61,6 +61,10 @@ const PathPreview: React.FC<Props> = ({ model, plateSel, flipY, showEngraveColor
     // Build world-space polylines once, accumulating the overall bbox.
     type Line = { pts: Pt[]; color: string; closed: boolean };
     const lines: Line[] = [];
+    // Raster engrave bitmaps, with their full px→world affine (drawn under the
+    // path strokes so cut lines stay visible on top).
+    type ImgDraw = { bitmap: ImageBitmap; widthPx: number; heightPx: number; M: Mat };
+    const imgDraws: ImgDraw[] = [];
     const bbox = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
     // hoisted out of the loops so it captures no loop-scoped mutable vars
     const transformPt = (p: Pt, cx: number, cy: number, offX: number, offY: number): Pt => {
@@ -84,6 +88,22 @@ const PathPreview: React.FC<Props> = ({ model, plateSel, flipY, showEngraveColor
         for (const lp of piece.loops) {
           const pts = lp.map((p) => transformPt(p, cx, cy, offX, offY));
           if (pts.length >= 2) lines.push({ pts, color, closed: piece.closed });
+        }
+      }
+      // plate-local → world affine for this plate (same math as transformPt)
+      const W: Mat = [1, 0, 0, flipY ? -1 : 1, offX - cx, offY + (flipY ? cy : -cy)];
+      for (const img of plate.images) {
+        // image corners participate in the auto-fit bbox even without a bitmap
+        for (const [px, py] of [[0, 0], [img.widthPx, 0], [img.widthPx, img.heightPx], [0, img.heightPx]]) {
+          transformPt(applyMat(img.transform, px, py), cx, cy, offX, offY);
+        }
+        if (img.bitmap) {
+          imgDraws.push({
+            bitmap: img.bitmap,
+            widthPx: img.widthPx,
+            heightPx: img.heightPx,
+            M: compose(W, img.transform),
+          });
         }
       }
     });
@@ -119,6 +139,25 @@ const PathPreview: React.FC<Props> = ({ model, plateSel, flipY, showEngraveColor
 
       const sx = (x: number) => x * view.zoom + view.panX;
       const sy = (y: number) => y * view.zoom + view.panY;
+
+      // Raster engrave bitmaps first, so paths stroke on top of them. The
+      // canvas transform is the composed dpr × view × (plate ∘ image) affine,
+      // letting drawImage place/rotate/scale the bitmap in one call.
+      for (const im of imgDraws) {
+        const m = im.M;
+        ctx.setTransform(
+          dpr * view.zoom * m[0],
+          dpr * view.zoom * m[1],
+          dpr * view.zoom * m[2],
+          dpr * view.zoom * m[3],
+          dpr * (view.zoom * m[4] + view.panX),
+          dpr * (view.zoom * m[5] + view.panY)
+        );
+        ctx.globalAlpha = 0.9;
+        ctx.drawImage(im.bitmap, 0, 0, im.widthPx, im.heightPx);
+        ctx.globalAlpha = 1;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
 
       ctx.lineWidth = 1;
       ctx.lineJoin = 'round';
@@ -172,9 +211,19 @@ const PathPreview: React.FC<Props> = ({ model, plateSel, flipY, showEngraveColor
       dragging = false;
     };
 
+    // Defer the redraw to the next frame. Resizing the canvas backing store
+    // synchronously inside the ResizeObserver callback can re-trigger layout
+    // within the same delivery cycle, which the browser reports as the (benign)
+    // "ResizeObserver loop completed with undelivered notifications" error —
+    // CRA's dev overlay then surfaces it as an uncaught runtime error.
+    let resizeRaf = 0;
     const ro = new ResizeObserver(() => {
-      viewRef.current.fitted = false;
-      draw();
+      if (resizeRaf) return;
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = 0;
+        viewRef.current.fitted = false;
+        draw();
+      });
     });
     ro.observe(canvas);
     canvas.addEventListener('wheel', onWheel, { passive: false });
@@ -183,6 +232,7 @@ const PathPreview: React.FC<Props> = ({ model, plateSel, flipY, showEngraveColor
     window.addEventListener('mouseup', onUp);
 
     return () => {
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
       ro.disconnect();
       canvas.removeEventListener('wheel', onWheel);
       canvas.removeEventListener('mousedown', onDown);
