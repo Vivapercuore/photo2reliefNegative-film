@@ -92,8 +92,8 @@ export function gridSizeFor(
   return { cols, rows, dotMm, widthMm: cols * dotMm, heightMm: rows * dotMm };
 }
 
-/** Area-average downsample of an RGBA image to cols×rows float RGB. */
-function downsample(src: RGBAImage, cols: number, rows: number): Float32Array {
+/** Area-average resample of an RGBA image to cols×rows float RGB (shared with the CMYK module). */
+export function downsampleRGB(src: RGBAImage, cols: number, rows: number): Float32Array {
   const { width: W, height: H, data } = src;
   const out = new Float32Array(cols * rows * 3);
   for (let ry = 0; ry < rows; ry++) {
@@ -141,7 +141,7 @@ export function ditherToPalette(
   dotMm: number,
   palette: PaletteColor[]
 ): DitherResult {
-  const buf = downsample(src, cols, rows);
+  const buf = downsampleRGB(src, cols, rows);
   const indices = new Uint8Array(cols * rows);
   const pal = palette.map((p) => p.rgb);
 

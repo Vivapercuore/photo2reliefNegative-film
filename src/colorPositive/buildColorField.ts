@@ -42,7 +42,7 @@ const UNIT_BOX = (() => {
 })();
 
 /** Append an axis-aligned box's triangles (outward) to a flat position array. */
-function pushBox(
+export function pushBox(
   arr: number[],
   x0: number, x1: number,
   y0: number, y1: number,
@@ -186,7 +186,12 @@ export function buildColorField(res: DitherResult, opts: ColorFieldOptions): Col
  * The views share the source Float32Array — no geometry data is copied.
  */
 export function partSolids(part: ColorPart): THREE.BufferGeometry[] {
-  const arr = (part.geometry.getAttribute('position') as THREE.BufferAttribute)
+  return splitBoxSolids(part.geometry);
+}
+
+/** Generic form of `partSolids` for any pushBox-built geometry (CMYK module). */
+export function splitBoxSolids(geometry: THREE.BufferGeometry): THREE.BufferGeometry[] {
+  const arr = (geometry.getAttribute('position') as THREE.BufferAttribute)
     .array as Float32Array;
   const out: THREE.BufferGeometry[] = [];
   const FLOATS_PER_BOX = UNIT_BOX.length; // 36 verts × 3

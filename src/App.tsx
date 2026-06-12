@@ -4,6 +4,7 @@ import Home from './Home';
 import Relief from './relief/Relief';
 import LaserCut from './laser/LaserCut';
 import ColorPositive from './colorPositive/ColorPositive';
+import ColorCmyk from './colorCmyk/ColorCmyk';
 import './App.css';
 
 function App() {
@@ -15,6 +16,7 @@ function App() {
           <Route path="/photo2relief" element={<Relief />} />
           <Route path="/lac2model" element={<LaserCut />} />
           <Route path="/color-positive" element={<ColorPositive />} />
+          <Route path="/color-cmyk" element={<ColorCmyk />} />
         </Routes>
       </HashRouter>
     </div>

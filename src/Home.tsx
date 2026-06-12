@@ -109,6 +109,35 @@ const ColorPositiveIcon: React.FC = () => (
   </svg>
 );
 
+/**
+ * CMYK thickness icon: four stacked ink layers (C/M/Y/K) of varying length —
+ * thickness carries the tone.
+ */
+const ColorCmykIcon: React.FC = () => (
+  <svg
+    width="48"
+    height="48"
+    viewBox="0 0 48 48"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    {/* backlight source + rays */}
+    <circle cx="24" cy="8" r="3.5" />
+    <path d="M24 1.5 V-0.5 M30 4 l1.4 -1.4 M18 4 l-1.4 -1.4" opacity="0.85" />
+    {/* stacked ink layers, lengths vary like channel thickness */}
+    <g stroke="none">
+      <rect x="10" y="20" width="28" height="5" rx="1.5" fill="#fff200" />
+      <rect x="13" y="26" width="22" height="5" rx="1.5" fill="#ec008c" />
+      <rect x="11" y="32" width="26" height="5" rx="1.5" fill="#00aeef" />
+      <rect x="16" y="38" width="16" height="5" rx="1.5" fill="#555" />
+    </g>
+  </svg>
+);
+
 const features: FeatureItem[] = [
   {
     title: '照片转浮雕负片',
@@ -128,6 +157,13 @@ const features: FeatureItem[] = [
       '上传彩色照片，Floyd-Steinberg 抖动到 RGB+黑，按喷嘴物理分辨率生成「颜色分布直接决定色彩」的多色正片（测试版，多色 3MF 导出开发中）。',
     path: '/color-positive',
     icon: <ColorPositiveIcon />,
+  },
+  {
+    title: '彩色照片转CMYK透光画',
+    description:
+      'RGB 转 CMYK 四通道，通道厚度控制明度（越厚越深），四层半透明耗材堆叠透光显色。4 色 AMS 即可打印，无需暂停换料（测试版）。',
+    path: '/color-cmyk',
+    icon: <ColorCmykIcon />,
   },
 ];
 
