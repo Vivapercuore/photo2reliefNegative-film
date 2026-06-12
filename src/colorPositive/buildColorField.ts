@@ -23,6 +23,14 @@ export interface ColorFieldOptions {
   addBorder: boolean;
   /** border width (mm) */
   borderWidth: number;
+  /**
+   * Raise the fill-color (black/white) dots to the full height instead of
+   * leaving them recessed at base height, so the top face comes out flat.
+   * Only sensible when every palette color has its own filament slot (≥5-slot
+   * AMS) — with the shared black/white-slot trick the fill MUST stay below the
+   * pause layer.
+   */
+  flattenTop?: boolean;
 }
 
 // Unit cube (Three BoxGeometry, outward winding), range [-0.5, 0.5], non-indexed.
@@ -102,16 +110,22 @@ function greedyRects(
 
 /**
  * Build per-color solids from a dither result:
- *  - black (K): only the base/backing layer (z 0..base), under both its own dots
- *    and the colored dots. Black stays flush with the bottom plate and is
- *    recessed by colorThickness — it no longer rises to the top surface.
+ *  - black (K): ONE full-footprint slab (z 0..base) — its own dots plus the
+ *    backing under the colored dots union into the whole rectangle, so a single
+ *    box replaces thousands of merged dot boxes. Black dots read as the slab
+ *    top showing through (recessed by colorThickness) — unless `flattenTop`,
+ *    which adds full-height columns over the black dots for a flat top face.
  *  - R/G/B (and white): the top layer (z base..total) over their dots, so the
  *    colored dots stand proud while black sits in the valleys.
  * Cells are greedy-merged per color. One ColorPart per used palette color.
+ *
+ * Every box is an independent closed solid: the exporter welds vertices per
+ * solid only (see geometryToMesh), so touching boxes never share vertices —
+ * sharing them makes slicers flag every shared face as non-manifold edges.
  */
 export function buildColorField(res: DitherResult, opts: ColorFieldOptions): ColorPart[] {
   const { cols, rows, dotMm, indices, palette } = res;
-  const { colorThickness, baseThickness, addBorder, borderWidth } = opts;
+  const { colorThickness, baseThickness, addBorder, borderWidth, flattenTop } = opts;
   const fillIdx = indexOfFill(palette);
   const total = baseThickness + colorThickness;
   const W = cols * dotMm;
@@ -121,17 +135,15 @@ export function buildColorField(res: DitherResult, opts: ColorFieldOptions): Col
   const buffers: number[][] = palette.map(() => []);
   const rectsFor = (pred: (idx: number) => boolean) => greedyRects(pred, indices, cols, rows);
 
-  // black dots → only base-height (0..base), flush with the backing, so black
-  // stays at the bottom plate and does NOT rise to the top surface (recessed by
-  // colorThickness relative to the colored dots).
-  for (const { c, r, w, h } of rectsFor((i) => i === fillIdx)) {
-    pushBox(buffers[fillIdx], c * dotMm, (c + w) * dotMm, 0, baseThickness, r * dotMm, (r + h) * dotMm);
+  // black slab: dots + backing under colored dots = the whole footprint 0..base
+  if (baseThickness > 0) {
+    pushBox(buffers[fillIdx], 0, W, 0, baseThickness, 0, D);
   }
 
-  // black backing (0..base) under the colored (non-black) dots
-  if (baseThickness > 0) {
-    for (const { c, r, w, h } of rectsFor((i) => i !== fillIdx)) {
-      pushBox(buffers[fillIdx], c * dotMm, (c + w) * dotMm, 0, baseThickness, r * dotMm, (r + h) * dotMm);
+  // flattenTop → black dot columns (base..total) on the slab, levelling the top
+  if (flattenTop && colorThickness > 0) {
+    for (const { c, r, w, h } of rectsFor((i) => i === fillIdx)) {
+      pushBox(buffers[fillIdx], c * dotMm, (c + w) * dotMm, baseThickness, total, r * dotMm, (r + h) * dotMm);
     }
   }
 
@@ -163,4 +175,28 @@ export function buildColorField(res: DitherResult, opts: ColorFieldOptions): Col
     parts.push({ palette: p, extruder: i + 1, geometry: geo, triangles: buf.length / 9 });
   });
   return parts;
+}
+
+/**
+ * Split a ColorPart's merged geometry back into its constituent boxes, one
+ * BufferGeometry per box (36 vertices each — pushBox's unit). Pass this array
+ * to the 3MF exporter so each box welds as an independent closed solid;
+ * welding the whole part as one mesh fuses the faces of touching boxes into
+ * shared edges, which Bambu reports as thousands of non-manifold edges.
+ * The views share the source Float32Array — no geometry data is copied.
+ */
+export function partSolids(part: ColorPart): THREE.BufferGeometry[] {
+  const arr = (part.geometry.getAttribute('position') as THREE.BufferAttribute)
+    .array as Float32Array;
+  const out: THREE.BufferGeometry[] = [];
+  const FLOATS_PER_BOX = UNIT_BOX.length; // 36 verts × 3
+  for (let o = 0; o + FLOATS_PER_BOX <= arr.length; o += FLOATS_PER_BOX) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute(
+      'position',
+      new THREE.BufferAttribute(arr.subarray(o, o + FLOATS_PER_BOX), 3)
+    );
+    out.push(g);
+  }
+  return out;
 }

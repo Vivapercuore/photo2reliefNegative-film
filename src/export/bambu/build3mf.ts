@@ -105,11 +105,25 @@ export interface Pack3mfOptions {
    * `M400 U1`. Omit for no custom gcode.
    */
   pauses?: PauseLayer[];
+  /**
+   * Project thumbnails (PNG bytes): `middle` becomes `Metadata/plate_1.png`
+   * (512×512 in Bambu's own files), `small` becomes `Metadata/plate_1_small.png`
+   * (128×128). Both are registered in `_rels/.rels` — the OPC standard
+   * thumbnail relationship is what makes Windows Explorer (and other OPC-aware
+   * shells) show a preview image for the .3mf file; the two bambulab
+   * cover-thumbnail relationships feed Bambu Studio's project browser.
+   */
+  thumbnails?: { middle: Uint8Array; small?: Uint8Array };
 }
 
 /** One custom-gcode insertion (暂停层) for `custom_gcode_per_layer.xml`. */
 export interface PauseLayer {
-  /** Pause after the layer whose top reaches this Z (mm) is printed. */
+  /**
+   * Bambu inserts the gcode **before printing the layer whose top reaches this
+   * Z** (mm) — the pause fires after the layer below finishes. To pause once
+   * everything below height H is printed, pass `H + layer_height` (the top of
+   * the first layer above H), not H itself.
+   */
   atZ: number;
   /** G-code to inject; default Bambu pause `M400 U1`. */
   gcode?: string;
@@ -368,7 +382,7 @@ function buildModelXml(prepared: PreparedObject[], metaBlock: string): string {
 }
 
 /** model_settings.config: name each object, bind it to its plate, single extruder. */
-function buildModelSettingsXml(prepared: PreparedObject[]): string {
+function buildModelSettingsXml(prepared: PreparedObject[], withThumbnail = false): string {
   const objs = prepared
     .map(
       (p, i) =>
@@ -406,6 +420,9 @@ function buildModelSettingsXml(prepared: PreparedObject[]): string {
         `    <metadata key="plater_name" value="plate-${pIdx + 1}"/>\n` +
         `    <metadata key="locked" value="false"/>\n` +
         `    <metadata key="filament_map_mode" value="Auto For Flush"/>\n` +
+        (withThumbnail && pIdx === 0
+          ? `    <metadata key="thumbnail_file" value="Metadata/plate_1.png"/>\n`
+          : '') +
         `${instances}\n` +
         `  </plate>`
       );
@@ -527,7 +544,8 @@ interface AssembledFiles {
 function buildAssembled(
   prepared: PreparedObject[],
   metaBlock: string,
-  assemblyName: string
+  assemblyName: string,
+  withThumbnail = false
 ): AssembledFiles {
   const CHILD_PATH = '/3D/Objects/colorparts.model';
 
@@ -624,6 +642,8 @@ function buildAssembled(
       const objExtruder = a.members[0]?.part.extruder ?? 1;
       const faceTotal = a.members.reduce((s, m) => s + m.part.mesh.triangleCount, 0);
       return (
+        // NB: face_count really is a bare attribute (no key=/value=) — that's
+        // exactly how Bambu Studio writes it in its own model_settings.config.
         `  <object id="${a.assemblyId}">\n` +
         `    <metadata key="name" value="${escapeXml(assemblyName)}"/>\n` +
         `    <metadata key="extruder" value="${objExtruder}"/>\n` +
@@ -642,6 +662,9 @@ function buildAssembled(
         `    <metadata key="plater_name" value=""/>\n` +
         `    <metadata key="locked" value="false"/>\n` +
         `    <metadata key="filament_map_mode" value="Auto For Flush"/>\n` +
+        (withThumbnail && idx === 0
+          ? `    <metadata key="thumbnail_file" value="Metadata/plate_1.png"/>\n`
+          : '') +
         `    <model_instance>\n` +
         `      <metadata key="object_id" value="${a.assemblyId}"/>\n` +
         `      <metadata key="instance_id" value="0"/>\n` +
@@ -668,6 +691,24 @@ function buildAssembled(
 }
 
 /** `Metadata/custom_gcode_per_layer.xml` — the 暂停层 / custom-gcode block. */
+/**
+ * `_rels/.rels` with thumbnail relationships — mirrors Bambu Studio's own
+ * output (OPC thumbnail for the OS shell + bambulab cover thumbnails).
+ */
+function buildRootRelsWithThumbs(hasSmall: boolean): string {
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?>\n` +
+    `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n` +
+    ` <Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>\n` +
+    ` <Relationship Target="/Metadata/plate_1.png" Id="rel-2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail"/>\n` +
+    ` <Relationship Target="/Metadata/plate_1.png" Id="rel-4" Type="http://schemas.bambulab.com/package/2021/cover-thumbnail-middle"/>\n` +
+    (hasSmall
+      ? ` <Relationship Target="/Metadata/plate_1_small.png" Id="rel-5" Type="http://schemas.bambulab.com/package/2021/cover-thumbnail-small"/>\n`
+      : '') +
+    `</Relationships>`
+  );
+}
+
 function buildCustomGcode(pauses: PauseLayer[]): string {
   const layers = pauses
     .map(
@@ -770,17 +811,26 @@ export async function pack3mf(
 
   const files: Zippable = {
     '[Content_Types].xml': strToU8(CONTENT_TYPES),
-    '_rels/.rels': strToU8(ROOT_RELS),
+    '_rels/.rels': strToU8(
+      options.thumbnails ? buildRootRelsWithThumbs(!!options.thumbnails.small) : ROOT_RELS
+    ),
     'Metadata/project_settings.config': strToU8(projectSettingsText),
     'Metadata/slice_info.config': strToU8(SLICE_INFO),
   };
+  if (options.thumbnails) {
+    files['Metadata/plate_1.png'] = options.thumbnails.middle;
+    if (options.thumbnails.small) {
+      files['Metadata/plate_1_small.png'] = options.thumbnails.small;
+    }
+  }
 
   if (options.assembleAsOne) {
     // One assembled object per plate (parts kept registered, no relative drift).
     const { rootModel, childModel, rels, modelSettings } = buildAssembled(
       prepared,
       metaBlock,
-      meta.title || '组合体'
+      meta.title || '组合体',
+      !!options.thumbnails
     );
     files['3D/3dmodel.model'] = strToU8(rootModel);
     files['3D/Objects/colorparts.model'] = strToU8(childModel);
@@ -789,7 +839,9 @@ export async function pack3mf(
   } else {
     // One independent object + build item per input (relief / laser).
     files['3D/3dmodel.model'] = strToU8(buildModelXml(prepared, metaBlock));
-    files['Metadata/model_settings.config'] = strToU8(buildModelSettingsXml(prepared));
+    files['Metadata/model_settings.config'] = strToU8(
+      buildModelSettingsXml(prepared, !!options.thumbnails)
+    );
   }
 
   if (filamentSettings) {

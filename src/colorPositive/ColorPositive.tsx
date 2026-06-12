@@ -10,6 +10,8 @@ import {
   Message,
   Tag,
   Spin,
+  Alert,
+  Modal,
   // @ts-ignore arco 类型偶尔解析不到
 } from '@arco-design/web-react';
 import * as THREE from 'three';
@@ -17,7 +19,8 @@ import { useDocumentTitle } from '../useDocumentTitle';
 import { PhotoSizeMap } from '../constants';
 import ZoomableImage from '../ZoomableImage';
 import ModelViewer from '../laser/viewer/ModelViewer';
-import { pack3mf } from '../export/bambu/build3mf';
+import { pack3mf, PauseLayer } from '../export/bambu/build3mf';
+import { makeThumbnails } from '../export/bambu/thumbnail';
 import {
   gridSizeFor,
   ditherToPalette,
@@ -28,8 +31,8 @@ import {
   RGBKW_PALETTE,
   DitherResult,
 } from './dither';
-import { buildColorField, ColorPart } from './buildColorField';
-import './ColorNeg.css';
+import { buildColorField, partSolids, ColorPart } from './buildColorField';
+import './ColorPositive.css';
 
 const RadioGroup = Radio.Group;
 
@@ -58,19 +61,33 @@ function saveBlob(data: BlobPart, filename: string) {
 const toHex = (rgb: [number, number, number]) =>
   '#' + rgb.map((v) => v.toString(16).padStart(2, '0').toUpperCase()).join('');
 
-/** Fixed printable dot size (mm) — smallest reliably printable feature. */
-const DOT_MM = 0.3;
+/** Smallest reliably printable dot size (mm) — lower bound of the UI option. */
+const DOT_MM_MIN = 0.2;
 
-const ColorNeg: React.FC = () => {
+/** Fixed slicing layer height (mm) — pause-layer Z must land on this grid. */
+const LAYER_MM = 0.1;
+
+/** localStorage key remembering the user's "≥5-slot AMS?" answer ('1'/'0'). */
+const AMS_LS_KEY = 'colorPositive.hasWideAms';
+
+const ColorPositive: React.FC = () => {
   const navigate = useNavigate();
   useDocumentTitle('彩色照片转正片');
 
   const [paletteMode, setPaletteMode] = useState<'rgbkw' | 'rgbw' | 'rgbk'>('rgbkw');
   const [maxLength, setMaxLength] = useState(152);
+  const [dotMm, setDotMm] = useState(DOT_MM_MIN);
   const [addBorder, setAddBorder] = useState(false);
   const [borderWidth, setBorderWidth] = useState(3);
   const [colorThickness, setColorThickness] = useState(0.2);
   const [baseThickness, setBaseThickness] = useState(0.8);
+  // 是否有 4 色以上（≥5 槽）AMS：必选项，无默认值；选过后记入 localStorage 自动恢复
+  const [hasWideAms, setHasWideAms] = useState<boolean | null>(() => {
+    const v = window.localStorage.getItem(AMS_LS_KEY);
+    return v === '1' ? true : v === '0' ? false : null;
+  });
+  // 抹平顶部（仅 ≥5 槽 AMS 可选）：黑色填充至顶面高度，使顶面平整
+  const [flattenTop, setFlattenTop] = useState(true);
   const [imageUrl, setImageUrl] = useState('');
   const [ditherUrl, setDitherUrl] = useState('');
   const [fileName, setFileName] = useState('');
@@ -130,7 +147,7 @@ const ColorNeg: React.FC = () => {
   useEffect(() => {
     const img = imgRef.current;
     if (!img || !img.width) return;
-    const grid = gridSizeFor(img.width, img.height, maxLength, DOT_MM);
+    const grid = gridSizeFor(img.width, img.height, maxLength, dotMm);
 
     const c = document.createElement('canvas');
     c.width = img.width;
@@ -161,7 +178,7 @@ const ColorNeg: React.FC = () => {
       total: grid.cols * grid.rows,
     });
     setDitherVersion((v) => v + 1);
-  }, [imgReady, maxLength, paletteMode]);
+  }, [imgReady, maxLength, paletteMode, dotMm]);
 
   // auto-(re)build the 3D model whenever the dither or thickness/border changes
   // (debounced; the heavy build runs off the input event so the Spin can show)
@@ -172,7 +189,14 @@ const ColorNeg: React.FC = () => {
     const timer = setTimeout(() => {
       try {
         disposeView();
-        const parts = buildColorField(res, { colorThickness, baseThickness, addBorder, borderWidth });
+        const parts = buildColorField(res, {
+          colorThickness,
+          baseThickness,
+          addBorder,
+          borderWidth,
+          // 抹平顶部只在 5 色方案 + ≥5 色 AMS 下可用（4 色方案该选项隐藏）
+          flattenTop: palette.length > 4 && hasWideAms === true && flattenTop,
+        });
         partsRef.current = parts;
         const group = new THREE.Group();
         parts.forEach((p) => {
@@ -197,12 +221,27 @@ const ColorNeg: React.FC = () => {
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [ditherVersion, colorThickness, baseThickness, addBorder, borderWidth, disposeView]);
+  }, [ditherVersion, colorThickness, baseThickness, addBorder, borderWidth, hasWideAms, flattenTop, disposeView]);
 
   const palette =
     paletteMode === 'rgbkw' ? RGBKW_PALETTE : paletteMode === 'rgbw' ? RGBW_PALETTE : RGBK_PALETTE;
 
-  const onExport = useCallback(async () => {
+  const onAmsChange = useCallback((v: 'yes' | 'no') => {
+    const b = v === 'yes';
+    setHasWideAms(b);
+    window.localStorage.setItem(AMS_LS_KEY, b ? '1' : '0');
+  }, []);
+
+  // 仅 4 色 AMS 时 5 色方案的换料方案：白色共用黑色槽位。黑色只存在于
+  // 0..底片厚度，白色只在底片之上，两者不同层 —— 黑色底片打完后暂停换白即可。
+  const kSlot = palette.findIndex((p) => p.id === 'K') + 1; // 黑色槽位（1-based），0=调色板无黑
+  const needsPause = hasWideAms === false && palette.length > 4 && kSlot > 0 && baseThickness > 0;
+  // Bambu 在「顶面到达 top_z 的那一层」开打之前插入暂停，所以要填第一层白色
+  // 的 top_z = 底片顶面（向上对齐层高网格）+ 一层——即黑色刚好全部打完的时刻。
+  const baseTopZ = Math.ceil(baseThickness / LAYER_MM - 1e-6) * LAYER_MM;
+  const pauseZ = Number((baseTopZ + LAYER_MM).toFixed(2));
+
+  const doExport = useCallback(async () => {
     const parts = partsRef.current;
     if (!parts.length) {
       Message.warning('请先生成模型');
@@ -210,18 +249,36 @@ const ColorNeg: React.FC = () => {
     }
     setExporting(true);
     try {
+      // 无宽 AMS：白色部件映射到黑色槽位（两色不同层，靠暂停层换料），
+      // 料表也只写 4 色；有宽 AMS：料表完全按调色板写入，用几色写几色。
+      const remap = needsPause;
       const objects = parts.map((p) => ({
         name: p.palette.label,
-        geometry: p.geometry,
-        extruder: p.extruder,
+        // 每个盒子作为独立实体（独立焊接顶点），避免相邻盒子共享面被
+        // 切片器报成非流形边
+        geometry: partSolids(p),
+        extruder: remap && p.palette.id === 'W' ? kSlot : p.extruder,
         plate: 1,
       }));
-      const lw = '0.2';
+      const filaments = (remap ? palette.filter((p) => p.id !== 'W') : palette).map((p) =>
+        toHex(p.rgb)
+      );
+      const pauses: PauseLayer[] | undefined = remap
+        ? [{ atZ: pauseZ, extruder: kSlot }]
+        : undefined;
+      // 缩略图：资源管理器（OPC thumbnail）与 Bambu 项目浏览都靠它显示预览
+      let thumbnails: { middle: Uint8Array; small: Uint8Array } | undefined;
+      try {
+        if (ditherUrl) thumbnails = await makeThumbnails(ditherUrl);
+      } catch {
+        thumbnails = undefined; // 缩略图失败不阻断导出
+      }
+      const lw = '0.25';
       const overrides: Record<string, unknown> = {
-        nozzle_diameter: ['0.4'],
-        layer_height: '0.1',
-        initial_layer_print_height: '0.1',
+        layer_height: String(LAYER_MM),
+        initial_layer_print_height: String(LAYER_MM),
         sparse_infill_density: '100%', // 必须 100%
+        wall_generator: 'arachne',
         line_width: lw,
         outer_wall_line_width: lw,
         inner_wall_line_width: lw,
@@ -230,30 +287,67 @@ const ColorNeg: React.FC = () => {
         top_surface_line_width: lw,
         initial_layer_line_width: lw,
         support_line_width: lw,
+        skeleton_infill_line_width: lw,
+        skin_infill_line_width: lw,
       };
       const u8 = await pack3mf('color-positive', objects, { title: baseName }, {
         // 把所有颜色合成一个组合体（单个 build item），各色互不相对位移
         assembleAsOne: true,
-        // 按调色板长度重排料表（RGBKW=5 色时模板的 4 根料会被正确扩展到 5），
-        // 否则模型引用第 5 槽会让 Bambu 重置料表、丢弃下面这些工艺参数
-        filaments: palette.map((p) => toHex(p.rgb)),
+        // 料表长度由我们自行控制（5 色 RGBKW、将来 CMYK 等都按需写入），
+        // 否则模型引用超出模板的槽位会让 Bambu 重置料表、丢弃下面这些工艺参数
+        filaments,
+        pauses,
+        thumbnails,
         projectSettingsOverrides: overrides,
         markModified: Object.keys(overrides),
       });
       saveBlob(u8, `${baseName}.3mf`);
-      Message.success('多色 3MF 已导出');
+      Message.success(
+        remap
+          ? `多色 3MF 已导出（黑色打完后暂停，Z=${pauseZ.toFixed(1)}mm 层开始前）`
+          : '多色 3MF 已导出'
+      );
     } catch (e: any) {
       Message.error(`导出失败：${e?.message || e}`);
     } finally {
       setExporting(false);
     }
-  }, [baseName, palette]);
+  }, [baseName, palette, needsPause, kSlot, pauseZ, ditherUrl]);
+
+  const onExport = useCallback(() => {
+    if (palette.length > 4 && hasWideAms === null) {
+      Message.warning('请先选择是否有 5 色 AMS');
+      return;
+    }
+    if (needsPause) {
+      Modal.confirm({
+        title: '打印须知：白色与黑色共用料槽',
+        content: (
+          <div>
+            <p>
+              4 色 AMS：白色已映射到黑色料槽（第 {kSlot} 槽），导出料表为 4 色。
+            </p>
+            <p>
+              打印开始时第 {kSlot} 槽装<b>黑色</b>耗材；黑色底片打完后（Z=
+              {pauseZ.toFixed(1)}mm 层开始前）会自动暂停，请将第 {kSlot} 槽换成
+              <b>白色</b>耗材后继续打印。
+            </p>
+          </div>
+        ),
+        okText: '我已了解，导出',
+        cancelText: '取消',
+        onOk: doExport,
+      });
+      return;
+    }
+    doExport();
+  }, [palette, hasWideAms, needsPause, kSlot, pauseZ, doExport]);
 
   const totalThickness = colorThickness + baseThickness;
   const thicknessStep = 0.1;
 
   return (
-    <div className="colorneg">
+    <div className="colorpos">
       <div className="page-nav">
         <Button type="text" size="small" onClick={() => navigate('/')}>
           ← 返回首页
@@ -265,8 +359,8 @@ const ColorNeg: React.FC = () => {
         </span>
       </div>
 
-      <div className="colorneg-body">
-        <div className="colorneg-panel">
+      <div className="colorpos-body">
+        <div className="colorpos-panel">
           <List size="large" header="上传彩色照片，生成多色正片">
             <List.Item key="upload">
               <div className="title">选择图像</div>
@@ -289,25 +383,25 @@ const ColorNeg: React.FC = () => {
               <>
                 <List.Item key="preview">
                   <div
-                    className="colorneg-collapse-head"
+                    className="colorpos-collapse-head"
                     onClick={() => setPreviewOpen((o) => !o)}
                   >
                     <span className="title">原图 / 预览图</span>
-                    <span className="colorneg-collapse-icon">{previewOpen ? '收起 ▲' : '展开 ▼'}</span>
+                    <span className="colorpos-collapse-icon">{previewOpen ? '收起 ▲' : '展开 ▼'}</span>
                   </div>
                   {previewOpen ? (
                     <>
-                      <ZoomableImage src={imageUrl} alt="原图" className="colorneg-fullimg" />
-                      <div className="colorneg-cap">原图</div>
+                      <ZoomableImage src={imageUrl} alt="原图" className="colorpos-fullimg" />
+                      <div className="colorpos-cap">原图</div>
                       {ditherUrl ? (
                         <>
                           <ZoomableImage
                             src={ditherUrl}
                             alt="预览图"
                             pixelated
-                            className="colorneg-fullimg colorneg-dither"
+                            className="colorpos-fullimg colorpos-dither"
                           />
-                          <div className="colorneg-cap">预览图</div>
+                          <div className="colorpos-cap">预览图</div>
                         </>
                       ) : null}
                     </>
@@ -330,6 +424,65 @@ const ColorNeg: React.FC = () => {
                   </RadioGroup>
                 </List.Item>
 
+                {palette.length > 4 ? (
+                  <List.Item key="ams">
+                    <div className="title">
+                      是否有 5 色 AMS<span className="colorpos-required">*必选</span>
+                    </div>
+                    <div className="describe">
+                      5 色方案需要 5 个料槽；只有 4 色 AMS 时通过暂停换料完成。选择会被记住，下次自动恢复。
+                    </div>
+                    <RadioGroup
+                      type="button"
+                      value={hasWideAms === null ? undefined : hasWideAms ? 'yes' : 'no'}
+                      onChange={onAmsChange}
+                    >
+                      <Radio value="yes">有 5 色及以上 AMS</Radio>
+                      <Radio value="no">有四色 AMS</Radio>
+                    </RadioGroup>
+                    {hasWideAms === null ? (
+                      <div className="colorpos-ams-unset">请先选择，才能导出 3MF。</div>
+                    ) : null}
+                    {needsPause ? (
+                      <Alert
+                        style={{ marginTop: 10 }}
+                        type="warning"
+                        title="将生成暂停层：白色与黑色共用料槽"
+                        content={`白色将映射到黑色料槽（第 ${kSlot} 槽），导出料表为 4 色。打印开始时第 ${kSlot} 槽装黑色；黑色底片打完后（Z=${pauseZ.toFixed(
+                          1
+                        )}mm 层开始前）自动暂停，此时请将该槽换成白色耗材后继续。`}
+                      />
+                    ) : null}
+                    {hasWideAms === true ? (
+                      <div className="colorpos-switch" style={{ marginTop: 10 }}>
+                        <Switch
+                          checked={flattenTop}
+                          onChange={(v: boolean | string | number) => setFlattenTop(Boolean(v))}
+                        />{' '}
+                        <span>抹平顶部（黑色填充至顶面高度，使顶面平整）</span>
+                      </div>
+                    ) : null}
+                  </List.Item>
+                ) : null}
+
+                <List.Item key="dot">
+                  <div className="title">像素点尺寸 (mm)</div>
+                  <div className="describe">
+                    单个像素点的物理边长，最小 0.2mm（受喷嘴线宽限制）。越小画面越细腻、像素越多，生成与切片也越慢。
+                  </div>
+                  <InputNumber
+                    style={{ width: 180 }}
+                    mode="button"
+                    suffix="mm"
+                    min={DOT_MM_MIN}
+                    max={1}
+                    step={0.05}
+                    precision={2}
+                    value={dotMm}
+                    onChange={(v: number) => setDotMm(v)}
+                  />
+                </List.Item>
+
                 <List.Item key="size">
                   <div className="title">成像区长边长度 (mm)</div>
                   <div className="describe">成品图像区长边的物理尺寸，短边按图片比例自动缩放。</div>
@@ -338,7 +491,7 @@ const ColorNeg: React.FC = () => {
                     {PhotoSizeMap.map((i) => (
                       <Tag
                         key={i.name}
-                        className="colorneg-size-tag"
+                        className="colorpos-size-tag"
                         onClick={() => setMaxLength(Math.max(i.width, i.height))}
                       >
                         {i.name}
@@ -394,7 +547,7 @@ const ColorNeg: React.FC = () => {
 
                 <List.Item key="border">
                   <div className="title">边框</div>
-                  <div className="colorneg-switch">
+                  <div className="colorpos-switch">
                     <Switch
                       checked={addBorder}
                       onChange={(v: boolean | string | number) => setAddBorder(Boolean(v))}
@@ -422,7 +575,7 @@ const ColorNeg: React.FC = () => {
                 {stats ? (
                   <List.Item key="stats">
                     <div className="title">生成信息</div>
-                    <div className="colorneg-stats">
+                    <div className="colorpos-stats">
                       <Tag color="arcoblue">
                         逻辑像素 {stats.cols} × {stats.rows}
                       </Tag>
@@ -430,11 +583,11 @@ const ColorNeg: React.FC = () => {
                         物理尺寸 {stats.widthMm.toFixed(1)} × {stats.heightMm.toFixed(1)} mm
                       </Tag>
                     </div>
-                    <div className="colorneg-counts">
+                    <div className="colorpos-counts">
                       {palette.map((p, i) => (
-                        <span key={p.id} className="colorneg-count">
+                        <span key={p.id} className="colorpos-count">
                           <i
-                            className="colorneg-swatch"
+                            className="colorpos-swatch"
                             style={{ background: `rgb(${p.rgb.join(',')})` }}
                           />
                           {p.label} {((stats.counts[i] / stats.total) * 100).toFixed(1)}%
@@ -454,7 +607,7 @@ const ColorNeg: React.FC = () => {
                     size="large"
                     long
                     loading={exporting}
-                    disabled={!viewObject || generating}
+                    disabled={!viewObject || generating || (palette.length > 4 && hasWideAms === null)}
                     onClick={onExport}
                   >
                     导出多色 3MF
@@ -465,12 +618,12 @@ const ColorNeg: React.FC = () => {
           </List>
         </div>
 
-        <div className="colorneg-viewer">
+        <div className="colorpos-viewer">
           <Spin loading={generating} tip="生成模型中…" style={{ width: '100%', height: '100%' }}>
             {viewObject ? (
-              <ModelViewer object={viewObject} className="colorneg-3d" />
+              <ModelViewer object={viewObject} className="colorpos-3d" />
             ) : (
-              <div className="colorneg-empty">
+              <div className="colorpos-empty">
                 上传图片、设置参数后
                 <br />
                 点「生成 3D 模型」在此预览着色效果
@@ -483,4 +636,4 @@ const ColorNeg: React.FC = () => {
   );
 };
 
-export default ColorNeg;
+export default ColorPositive;

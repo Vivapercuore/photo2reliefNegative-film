@@ -1,9 +1,9 @@
 /**
- * Color-negative dithering core (DOM-free so it runs in a worker and is unit
+ * Color-positive dithering core (DOM-free so it runs in a worker and is unit
  * testable). Floyd–Steinberg error diffusion onto a small fixed palette, with
  * the grid resolution capped by the printer's physical dot size.
  *
- * Backlit color negative uses an ADDITIVE palette (R/G/B + black): dense R/G/B
+ * The additive palettes (R/G/B + black/white) suit backlit viewing: dense R/G/B
  * dots mix into bright colors when light shines through, black blocks light.
  */
 
@@ -72,9 +72,11 @@ export interface GridSize {
 }
 
 /**
- * Resolution capped by printer physics: the smallest reliably printable feature
- * is the fixed dot size (mm). Given the image-area long edge in mm, derive the
- * dot grid and downsample to it.
+ * Derive the dot grid from the printed size: long edge (mm) ÷ dot size (mm) =
+ * dots along the long edge. A bigger image area (or smaller dots) always means
+ * more dots — small sources are upsampled (nearest) rather than capping the
+ * grid at the source pixel count, so growing the image area never silently
+ * stops adding pixels.
  */
 export function gridSizeFor(
   imgW: number,
@@ -84,8 +86,7 @@ export function gridSizeFor(
 ): GridSize {
   const longPx = Math.max(imgW, imgH, 1);
   const maxDotsLong = Math.max(1, Math.floor(maxLengthMm / dotMm));
-  // never upsample beyond the source pixels
-  const scale = Math.min(1, maxDotsLong / longPx);
+  const scale = maxDotsLong / longPx;
   const cols = Math.max(1, Math.round(imgW * scale));
   const rows = Math.max(1, Math.round(imgH * scale));
   return { cols, rows, dotMm, widthMm: cols * dotMm, heightMm: rows * dotMm };

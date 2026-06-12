@@ -22,6 +22,7 @@ import { useDocumentTitle } from '../useDocumentTitle';
 import ModelViewer from '../laser/viewer/ModelViewer';
 import ZoomableImage from '../ZoomableImage';
 import { pack3mf, BambuTemplate, Pack3mfOptions } from '../export/bambu/build3mf';
+import { makeThumbnails } from '../export/bambu/thumbnail';
 import type { ReliefRequest, ReliefResponse } from './worker/relief.worker';
 
 const RadioGroup = Radio.Group;
@@ -322,6 +323,13 @@ const Relief: React.FC = () => {
           }
         : {};
 
+      // 缩略图：用深度预览图生成，资源管理器与 Bambu 项目浏览器显示文件预览
+      try {
+        if (previewUrl) options.thumbnails = await makeThumbnails(previewUrl);
+      } catch {
+        // 缩略图失败不阻断导出
+      }
+
       const u8 = await pack3mf(
         base.template,
         [{ name: 'photo-relief', geometry: geom }],
@@ -340,7 +348,7 @@ const Relief: React.FC = () => {
     } finally {
       setExporting(false);
     }
-  }, [preset, LayerDeep, BaseDeep, fileName]);
+  }, [preset, LayerDeep, BaseDeep, fileName, previewUrl]);
 
   const sizeText = stats
     ? `${stats.size.x.toFixed(1)} × ${stats.size.z.toFixed(1)} × ${stats.size.y.toFixed(2)} mm`

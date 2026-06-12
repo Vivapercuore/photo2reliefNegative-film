@@ -77,10 +77,10 @@ const ReliefIcon: React.FC = () => (
 );
 
 /**
- * Color backlit-negative icon: a backlight glow over a panel filled with R/G/B
- * dither dots (additive color) — the dithered color negative read by light.
+ * Color-positive icon: a backlight glow over a panel filled with R/G/B dither
+ * dots (additive color) — the dithered color print read by light.
  */
-const ColorNegIcon: React.FC = () => (
+const ColorPositiveIcon: React.FC = () => (
   <svg
     width="48"
     height="48"
@@ -127,7 +127,7 @@ const features: FeatureItem[] = [
     description:
       '上传彩色照片，Floyd-Steinberg 抖动到 RGB+黑，按喷嘴物理分辨率生成「颜色分布直接决定色彩」的多色正片（测试版，多色 3MF 导出开发中）。',
     path: '/color-positive',
-    icon: <ColorNegIcon />,
+    icon: <ColorPositiveIcon />,
   },
 ];
 
