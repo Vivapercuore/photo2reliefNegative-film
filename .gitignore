@@ -28,3 +28,6 @@ yarn-error.log*
 
 # large sample laser-cut files (kept locally, not versioned)
 /laser-knife-cut-demo
+
+# stray accidentally-committed home dir
+/~
