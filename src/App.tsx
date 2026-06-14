@@ -5,6 +5,7 @@ import Relief from './relief/Relief';
 import LaserCut from './laser/LaserCut';
 import ColorPositive from './colorPositive/ColorPositive';
 import ColorCmyk from './colorCmyk/ColorCmyk';
+import CmykCalibrate from './colorCmyk/CmykCalibrate';
 import './App.css';
 
 function App() {
@@ -17,6 +18,7 @@ function App() {
           <Route path="/lac2model" element={<LaserCut />} />
           <Route path="/color-positive" element={<ColorPositive />} />
           <Route path="/color-cmyk" element={<ColorCmyk />} />
+          <Route path="/color-cmyk/calibrate" element={<CmykCalibrate />} />
         </Routes>
       </HashRouter>
     </div>

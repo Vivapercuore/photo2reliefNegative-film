@@ -22,6 +22,7 @@ import { gridSizeFor } from '../colorPositive/dither';
 import { splitBoxSolids } from '../colorPositive/buildColorField';
 import { quantizeCmyk, cmykToRGBA, cmykStats, CmykField, CMYK_PALETTE } from './cmyk';
 import { buildCmykParts, CmykPart } from './buildCmykField';
+import { loadCalibration } from './calibration';
 import './ColorCmyk.css';
 
 interface Stats {
@@ -64,7 +65,7 @@ const ColorCmyk: React.FC = () => {
 
   const [maxLength, setMaxLength] = useState(152);
   const [dotMm, setDotMm] = useState(0.6);
-  const [maxLevels, setMaxLevels] = useState(6);
+  const [maxLevels, setMaxLevels] = useState(10);
   const [baseLayers, setBaseLayers] = useState(2);
   const [addBorder, setAddBorder] = useState(false);
   const [borderWidth, setBorderWidth] = useState(3);
@@ -76,6 +77,14 @@ const ColorCmyk: React.FC = () => {
   const [previewOpen, setPreviewOpen] = useState(true);
   const [stats, setStats] = useState<Stats | null>(null);
   const fieldRef = useRef<CmykField | null>(null);
+  // 耗材校准（颜色/透光系数），来自校准页，未校准时为按调色板推算的默认值。
+  // 返回此页时重新读取，保证刚校准完即生效。
+  const [cal, setCal] = useState(() => loadCalibration());
+  useEffect(() => {
+    const reload = () => setCal(loadCalibration());
+    window.addEventListener('focus', reload);
+    return () => window.removeEventListener('focus', reload);
+  }, []);
 
   // 3D
   const viewGroupRef = useRef<THREE.Group | null>(null);
@@ -138,7 +147,12 @@ const ColorCmyk: React.FC = () => {
     cx.drawImage(img, 0, 0);
     const src = cx.getImageData(0, 0, img.width, img.height);
 
-    const field = quantizeCmyk(src, grid.cols, grid.rows, grid.dotMm, maxLevels);
+    const field = quantizeCmyk(src, grid.cols, grid.rows, grid.dotMm, {
+      cal,
+      layerMm: LAYER_MM,
+      baseLayers,
+      maxLevels,
+    });
     fieldRef.current = field;
 
     const oc = document.createElement('canvas');
@@ -146,7 +160,11 @@ const ColorCmyk: React.FC = () => {
     oc.height = grid.rows;
     const ocx = oc.getContext('2d');
     if (!ocx) return;
-    ocx.putImageData(new ImageData(cmykToRGBA(field), grid.cols, grid.rows), 0, 0);
+    ocx.putImageData(
+      new ImageData(cmykToRGBA(field, cal, LAYER_MM, baseLayers), grid.cols, grid.rows),
+      0,
+      0
+    );
     setPreviewUrl(oc.toDataURL());
 
     const s = cmykStats(field);
@@ -160,7 +178,7 @@ const ColorCmyk: React.FC = () => {
       maxLevelsTotal: s.maxLevelsTotal,
     });
     setFieldVersion((v) => v + 1);
-  }, [imgReady, maxLength, dotMm, maxLevels]);
+  }, [imgReady, maxLength, dotMm, maxLevels, baseLayers, cal]);
 
   // auto-(re)build the 3D model (debounced so the Spin can show)
   useEffect(() => {
@@ -282,6 +300,26 @@ const ColorCmyk: React.FC = () => {
       <div className="colorcmyk-body">
         <div className="colorcmyk-panel">
           <List size="large" header="上传彩色照片，生成 CMYK 透光彩画">
+            <List.Item key="calibration">
+              <div className="title">耗材校准</div>
+              <div className="describe">
+                每种耗材的颜色和透光系数不同，校准后预览和成品才一致。
+                {cal.calibrated
+                  ? '当前已使用自定义校准。'
+                  : '当前为按调色板推算的默认估计，建议打印校准片实测一次。'}
+              </div>
+              <div className="colorcmyk-switch">
+                {cal.calibrated ? (
+                  <Tag color="green">已校准</Tag>
+                ) : (
+                  <Tag color="gray">默认估计</Tag>
+                )}
+                <Button size="small" onClick={() => navigate('/color-cmyk/calibrate')}>
+                  {cal.calibrated ? '重新校准 / 查看' : '去校准耗材'}
+                </Button>
+              </div>
+            </List.Item>
+
             <List.Item key="upload">
               <div className="title">选择图像</div>
               <div className="describe">支持 jpg/png，全部在本地浏览器处理，不上传服务器。</div>
@@ -333,13 +371,13 @@ const ColorCmyk: React.FC = () => {
                 <List.Item key="howto">
                   <div className="title">成像原理</div>
                   <div className="describe">
-                    CMYK 四色减色成像：每个通道的厚度控制明度（越厚越深），按 黄→品红→青→黑
-                    自下而上堆叠，背光透射时混合显色。4 色 AMS 即可打印，无需暂停换料。建议使用半透明
-                    C/M/Y 耗材。
+                    CMY + 白 透光成像：底层<b>白色</b>是扩散/明度层，厚度控制明暗（越厚越暗，类似光刻画），
+                    青/品红/黄叠在上面按厚度减色上色。自下而上 白→黄→品红→青 堆叠，背光透射时混合显色。
+                    4 色 AMS 即可打印，无需暂停换料；建议 C/M/Y 用半透明耗材、白色用扩散白。
                   </div>
                   <div className="describe">
-                    注意：右侧 3D 预览是不透光时从顶面看到的外观（黑色居多属正常，因为 K
-                    层在最上）；实际透光显色效果以上方「CMYK 量化预览」为准。
+                    注意：右侧 3D 预览是不透光时从顶面看到的外观（顶层是青/品红/黄，颜色偏色属正常）；
+                    实际透光显色效果以上方「量化预览」为准。
                   </div>
                 </List.Item>
 
@@ -411,10 +449,10 @@ const ColorCmyk: React.FC = () => {
                 </List.Item>
 
                 <List.Item key="base">
-                  <div className="title">基底层数</div>
+                  <div className="title">白色底层（扩散层）层数</div>
                   <div className="describe">
-                    黄色（最浅色）基底整板，单层 {LAYER_MM}mm。纯白像素四通道厚度都是
-                    0，没有基底时会变成通孔——除非刻意想要镂空，否则建议至少 1~2 层。
+                    白色扩散底层整板，单层 {LAYER_MM}mm。它把背光匀化成白场，并避免纯白像素变成
+                    通孔；越厚整体越偏暗。除非刻意想要镂空，否则建议至少 1~2 层。
                   </div>
                   <InputNumber
                     style={{ width: 180 }}
@@ -428,7 +466,7 @@ const ColorCmyk: React.FC = () => {
                     onChange={(v: number) => setBaseLayers(v)}
                   />
                   {baseLayers === 0 ? (
-                    <div className="colorcmyk-warn">基底为 0：纯白区域将成为通孔。</div>
+                    <div className="colorcmyk-warn">白色底层为 0：纯白区域将成为通孔，且背光不均。</div>
                   ) : null}
                 </List.Item>
 
@@ -439,7 +477,7 @@ const ColorCmyk: React.FC = () => {
                       checked={addBorder}
                       onChange={(v: boolean | string | number) => setAddBorder(Boolean(v))}
                     />{' '}
-                    <span>在四周加一圈黑色边框（高度与最高像素一致）</span>
+                    <span>在四周加一圈白色边框（高度与最高像素一致）</span>
                   </div>
                   {addBorder ? (
                     <div style={{ marginTop: 10 }}>
@@ -498,8 +536,7 @@ const ColorCmyk: React.FC = () => {
                 <List.Item key="export">
                   <div className="title">导出</div>
                   <div className="describe">
-                    模型随参数自动生成，右侧实时预览（C/M/Y 半透明显示）。导出 4 色 3MF，料表为
-                    青/品红/黄/黑。
+                    模型随参数自动生成，右侧实时预览。导出 4 色 3MF，料表为 青/品红/黄/白。
                   </div>
                   <Button
                     type="primary"

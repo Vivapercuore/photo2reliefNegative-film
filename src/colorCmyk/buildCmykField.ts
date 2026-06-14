@@ -4,13 +4,14 @@ import { pushBox } from '../colorPositive/buildColorField';
 import { CmykField, CMYK_PALETTE } from './cmyk';
 
 /**
- * Geometry builder for the CMYK module: every cell of every channel becomes a
- * box spanning [bottom, bottom + thickness] where bottom is the running sum of
- * the channels stacked below it — a contiguous per-pixel column, no air gaps.
+ * Geometry builder for the CMY+White lithophane: every cell of every channel
+ * becomes a box spanning [bottom, bottom + thickness] where bottom is the
+ * running sum of the channels stacked below it — a contiguous per-pixel column,
+ * no air gaps.
  *
- * Stack order bottom→top is Y → M → C → K (yellow against the backlight,
- * black nearest the viewer), chosen so dark detail also reads correctly in
- * reflected light. Filament slots stay in C,M,Y,K order (1..4) regardless.
+ * Stack order bottom→top is W → Y → M → C: the white diffuser/luminance layer
+ * sits against the backlight (its thickness sets 明度, lithophane-style), with
+ * C/M/Y on top carrying colour. Filament slots stay in C,M,Y,W order (1..4).
  *
  * Cells with equal (bottom, thickness) are greedy-merged into rectangles, and
  * — as in the color-positive module — every box is exported as an independent
@@ -36,8 +37,9 @@ export interface CmykBuildOptions {
   borderWidth: number;
 }
 
-/** Stack order bottom→top as indices into channels[C,M,Y,K]: Y, M, C, K. */
-const STACK_ORDER = [2, 1, 0, 3];
+/** Stack order bottom→top as indices into channels[C,M,Y,W]: W, Y, M, C
+ *  (white diffuser/luminance against the backlight, colours on top). */
+const STACK_ORDER = [3, 2, 1, 0];
 
 interface LevelRect {
   c: number;
@@ -124,12 +126,13 @@ export function buildCmykParts(field: CmykField, opts: CmykBuildOptions): CmykPa
     }
   }
 
-  // base slab (Y, lightest): full footprint 0..base — keeps white cells solid
+  // white diffuser floor: full footprint 0..base — evens the backlight and
+  // keeps pure-white cells solid (no holes). White is filament index 3.
   if (baseLayers > 0) {
-    pushBox(buffers[2], 0, W, 0, baseLayers * layerMm, 0, D);
+    pushBox(buffers[3], 0, W, 0, baseLayers * layerMm, 0, D);
   }
 
-  // border wall (K), tallest-column height, around the four edges
+  // border wall (white — no black filament here), tallest-column height
   if (addBorder) {
     const hTop = maxTop * layerMm;
     pushBox(buffers[3], -bw, W + bw, 0, hTop, -bw, 0); // front

@@ -130,10 +130,10 @@ const ColorCmykIcon: React.FC = () => (
     <path d="M24 1.5 V-0.5 M30 4 l1.4 -1.4 M18 4 l-1.4 -1.4" opacity="0.85" />
     {/* stacked ink layers, lengths vary like channel thickness */}
     <g stroke="none">
-      <rect x="10" y="20" width="28" height="5" rx="1.5" fill="#fff200" />
+      <rect x="11" y="20" width="26" height="5" rx="1.5" fill="#00aeef" />
       <rect x="13" y="26" width="22" height="5" rx="1.5" fill="#ec008c" />
-      <rect x="11" y="32" width="26" height="5" rx="1.5" fill="#00aeef" />
-      <rect x="16" y="38" width="16" height="5" rx="1.5" fill="#555" />
+      <rect x="15" y="32" width="18" height="5" rx="1.5" fill="#fff200" />
+      <rect x="9" y="38" width="30" height="5" rx="1.5" fill="#f2f2f2" />
     </g>
   </svg>
 );
@@ -161,7 +161,7 @@ const features: FeatureItem[] = [
   {
     title: '彩色照片转CMYK透光画',
     description:
-      'RGB 转 CMYK 四通道，通道厚度控制明度（越厚越深），四层半透明耗材堆叠透光显色。4 色 AMS 即可打印，无需暂停换料（测试版）。',
+      'CMY + 白 四色透光画：白色扩散层厚度控制明暗（光刻画式），CMY 叠加上色。可校准耗材色差与透光系数，4 色 AMS 即可打印（测试版）。',
     path: '/color-cmyk',
     icon: <ColorCmykIcon />,
   },

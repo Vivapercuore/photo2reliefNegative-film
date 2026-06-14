@@ -1,0 +1,122 @@
+.cmykcal {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.cmykcal .page-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--color-border-2, #333);
+  flex: 0 0 auto;
+}
+.cmykcal .page-nav-title {
+  font-weight: 600;
+}
+
+.cmykcal-body {
+  flex: 1 1 auto;
+  max-width: 760px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 12px 40px;
+}
+.cmykcal-body .title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.cmykcal-body .describe {
+  color: var(--color-text-3, #999);
+  font-size: 12px;
+  line-height: 1.7;
+  margin-bottom: 10px;
+}
+
+.cmykcal-status {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.cmykcal-swatches {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 6px 0 10px;
+}
+.cmykcal-sw {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+}
+.cmykcal-sw i {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.cmykcal-guide {
+  width: 260px;
+  max-width: 100%;
+  display: block;
+  margin: 4px auto 12px;
+  background: #181818;
+  border-radius: 4px;
+}
+
+.cmykcal-canvas {
+  max-width: 100%;
+  border: 1px solid #444;
+  border-radius: 2px;
+  cursor: crosshair;
+  display: block;
+}
+
+.cmykcal-table {
+  border-collapse: collapse;
+  margin: 4px 0 12px;
+  font-size: 13px;
+}
+.cmykcal-table th,
+.cmykcal-table td {
+  border: 1px solid var(--color-border-2, #444);
+  padding: 4px 12px;
+  text-align: center;
+}
+.cmykcal-table th {
+  color: var(--color-text-3, #999);
+  font-weight: 600;
+}
+
+/* fullscreen white backlight: the monitor acts as an even light source */
+.cmykcal-backlight {
+  position: fixed;
+  inset: 0;
+  background: #ffffff;
+  z-index: 99999;
+  cursor: pointer;
+}
+.cmykcal-backlight-hint {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  color: #bbb;
+  white-space: nowrap;
+  animation: cmykcal-hint-fade 4s ease forwards;
+}
+@keyframes cmykcal-hint-fade {
+  0%,
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
