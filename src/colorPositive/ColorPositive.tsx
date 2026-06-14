@@ -25,6 +25,7 @@ import {
   gridSizeFor,
   ditherToPalette,
   indicesToRGBA,
+  simulateRGBA,
   paletteCounts,
   RGBK_PALETTE,
   RGBW_PALETTE,
@@ -90,6 +91,7 @@ const ColorPositive: React.FC = () => {
   const [flattenTop, setFlattenTop] = useState(true);
   const [imageUrl, setImageUrl] = useState('');
   const [ditherUrl, setDitherUrl] = useState('');
+  const [simUrl, setSimUrl] = useState('');
   const [fileName, setFileName] = useState('');
   const imgRef = useRef<HTMLImageElement | null>(null);
   const [imgReady, setImgReady] = useState(0);
@@ -167,6 +169,18 @@ const ColorPositive: React.FC = () => {
     if (!ocx) return;
     ocx.putImageData(new ImageData(indicesToRGBA(res), grid.cols, grid.rows), 0, 0);
     setDitherUrl(oc.toDataURL());
+
+    // 透光混色模拟：按线性光块平均，接近成品实际观感（点阵图被浏览器按
+    // sRGB 缩放，观感会比实物更艳更硬）
+    const sim = simulateRGBA(res, Math.max(2, Math.round(grid.cols / 380)));
+    const sc = document.createElement('canvas');
+    sc.width = sim.width;
+    sc.height = sim.height;
+    const scx = sc.getContext('2d');
+    if (scx) {
+      scx.putImageData(new ImageData(sim.data, sim.width, sim.height), 0, 0);
+      setSimUrl(sc.toDataURL());
+    }
 
     setStats({
       cols: grid.cols,
@@ -267,9 +281,11 @@ const ColorPositive: React.FC = () => {
         ? [{ atZ: pauseZ, extruder: kSlot }]
         : undefined;
       // 缩略图：资源管理器（OPC thumbnail）与 Bambu 项目浏览都靠它显示预览
+      // （优先用透光混色模拟图，比原始点阵更接近成品观感）
       let thumbnails: { middle: Uint8Array; small: Uint8Array } | undefined;
       try {
-        if (ditherUrl) thumbnails = await makeThumbnails(ditherUrl);
+        const thumbSrc = simUrl || ditherUrl;
+        if (thumbSrc) thumbnails = await makeThumbnails(thumbSrc);
       } catch {
         thumbnails = undefined; // 缩略图失败不阻断导出
       }
@@ -312,7 +328,7 @@ const ColorPositive: React.FC = () => {
     } finally {
       setExporting(false);
     }
-  }, [baseName, palette, needsPause, kSlot, pauseZ, ditherUrl]);
+  }, [baseName, palette, needsPause, kSlot, pauseZ, ditherUrl, simUrl]);
 
   const onExport = useCallback(() => {
     if (palette.length > 4 && hasWideAms === null) {
@@ -395,10 +411,13 @@ const ColorPositive: React.FC = () => {
                       <div className="colorpos-cap">原图</div>
                       {ditherUrl ? (
                         <>
+                          {/* 缩略显示用线性光正确缩放的小图（浏览器按 sRGB 缩放
+                              点阵会发暗发脏且有摩尔纹）；点开放大看原始点阵 */}
                           <ZoomableImage
-                            src={ditherUrl}
+                            src={simUrl || ditherUrl}
                             alt="预览图"
-                            pixelated
+                            zoomSrc={ditherUrl}
+                            zoomPixelated
                             className="colorpos-fullimg colorpos-dither"
                           />
                           <div className="colorpos-cap">预览图</div>

@@ -46,12 +46,17 @@ export const RGBKW_PALETTE: PaletteColor[] = [
   { id: 'W', label: '白', rgb: [255, 255, 255] },
 ];
 
-/** CMYK, subtractive (kept for the positive/reflective module later). */
+/**
+ * CMY + White for the backlit color-lithophane module. The 4th filament is
+ * WHITE, not black: a translucent diffuser whose thickness sets luminance
+ * (thicker = dimmer, lithophane-style 明度), with C/M/Y on top carrying colour.
+ * (Name kept as CMYK_PALETTE since the module/route is "color-cmyk".)
+ */
 export const CMYK_PALETTE: PaletteColor[] = [
   { id: 'C', label: '青', rgb: [0, 174, 239] },
   { id: 'M', label: '品红', rgb: [236, 0, 140] },
   { id: 'Y', label: '黄', rgb: [255, 242, 0] },
-  { id: 'K', label: '黑', rgb: [0, 0, 0] },
+  { id: 'W', label: '白', rgb: [255, 255, 255] },
 ];
 
 /** Minimal ImageData shape (so this file needs no DOM lib). */
@@ -143,25 +148,68 @@ export function ditherToPalette(
 ): DitherResult {
   const buf = downsampleRGB(src, cols, rows);
   const indices = new Uint8Array(cols * rows);
-  const pal = palette.map((p) => p.rgb);
+
+  // Match and diffuse in LINEAR light (0..255 scale): the printed dots mix
+  // additively in linear intensity when backlit, so gamma-space matching picks
+  // visibly wrong mixes (whites overused, hues locking into solid patches).
+  const srgb2lin = (v: number) => {
+    const n = v / 255;
+    return 255 * (n <= 0.04045 ? n / 12.92 : Math.pow((n + 0.055) / 1.055, 2.4));
+  };
+  for (let i = 0; i < buf.length; i++) buf[i] = srgb2lin(buf[i]);
+  const pal = palette.map((p) => p.rgb.map(srgb2lin));
+
+  // Project each pixel into the palette's achievable gamut (the convex hull of
+  // the dot colors in linear light). Side-by-side dots DILUTE: a mix of
+  // fractions f_R+f_G+f_B+f_W+f_K=1 can only reach r+g+b−2·min(r,g,b) ≤ 1 —
+  // bright saturated secondaries (pure yellow needs r=g=1 simultaneously) are
+  // physically unreachable, and feeding them to error diffusion makes the
+  // residual grow without bound: channels pin at the clamp, ties collapse to
+  // the first palette entry (yellow → solid red), and the dragged error bleeds
+  // into neighbouring regions. Scaling the pixel onto the hull keeps hue and
+  // saturation, trades only brightness — and keeps the diffusion error bounded.
+  // (Only valid when the palette has K as the "empty" filler.)
+  if (palette.some((p) => p.id === 'K')) {
+    for (let i = 0; i < buf.length; i += 3) {
+      const m = Math.min(buf[i], buf[i + 1], buf[i + 2]);
+      const excess = buf[i] + buf[i + 1] + buf[i + 2] - 2 * m;
+      if (excess > 255) {
+        const s = 255 / excess;
+        buf[i] *= s;
+        buf[i + 1] *= s;
+        buf[i + 2] *= s;
+      }
+    }
+  }
+
+  // Safety net for residual accumulation at region boundaries: allow one full
+  // step of legit overshoot headroom (mixing needs it to force the next pick),
+  // drop anything beyond as runaway.
+  const clampStep = (v: number) => (v < -255 ? -255 : v > 510 ? 510 : v);
 
   for (let y = 0; y < rows; y++) {
     const ltr = y % 2 === 0; // serpentine
     for (let k = 0; k < cols; k++) {
       const x = ltr ? k : cols - 1 - k;
       const o = (y * cols + x) * 3;
-      const r = buf[o], g = buf[o + 1], b = buf[o + 2];
+      const r = clampStep(buf[o]), g = clampStep(buf[o + 1]), b = clampStep(buf[o + 2]);
 
-      // nearest palette color (squared Euclidean in RGB)
-      let bi = 0, bd = Infinity;
-      for (let p = 0; p < pal.length; p++) {
+      // nearest palette color (squared Euclidean in linear RGB); start the
+      // scan at a per-cell offset so exact ties (e.g. yellow ↔ R/G) alternate
+      // spatially instead of always collapsing to the first palette entry
+      const start = (x + y * 3) % pal.length;
+      let bi = start, bd = Infinity;
+      for (let q = 0; q < pal.length; q++) {
+        const p = (start + q) % pal.length;
         const dr = r - pal[p][0], dg = g - pal[p][1], db = b - pal[p][2];
         const d = dr * dr + dg * dg + db * db;
         if (d < bd) { bd = d; bi = p; }
       }
       indices[y * cols + x] = bi;
 
-      const er = r - pal[bi][0], eg = g - pal[bi][1], eb = b - pal[bi][2];
+      const er = r - pal[bi][0],
+        eg = g - pal[bi][1],
+        eb = b - pal[bi][2];
       const dir = ltr ? 1 : -1;
       const spread = (xx: number, yy: number, f: number) => {
         if (xx < 0 || xx >= cols || yy < 0 || yy >= rows) return;
@@ -193,6 +241,56 @@ export function indicesToRGBA(res: DitherResult): Uint8ClampedArray {
     out[o + 3] = 255;
   }
   return out;
+}
+
+/**
+ * Physically-simulated preview: average the dot colors over `block`×`block`
+ * cells in LINEAR light (what the eye does with backlit dots at viewing
+ * distance) and encode back to sRGB. Unlike the raw dot map — which browsers
+ * downscale in gamma space, making it look harsher/more saturated than the
+ * print — this approximates what the finished sheet will actually look like.
+ */
+export function simulateRGBA(
+  res: DitherResult,
+  block: number
+): { data: Uint8ClampedArray; width: number; height: number } {
+  const { cols, rows, indices, palette } = res;
+  const palLin = palette.map((p) =>
+    p.rgb.map((v) => {
+      const n = v / 255;
+      return n <= 0.04045 ? n / 12.92 : Math.pow((n + 0.055) / 1.055, 2.4);
+    })
+  );
+  const lin2srgb = (n: number) =>
+    255 * (n <= 0.0031308 ? 12.92 * n : 1.055 * Math.pow(n, 1 / 2.4) - 0.055);
+
+  const W = Math.ceil(cols / block);
+  const H = Math.ceil(rows / block);
+  const out = new Uint8ClampedArray(W * H * 4);
+  for (let oy = 0; oy < H; oy++) {
+    const y0 = oy * block;
+    const y1 = Math.min(rows, y0 + block);
+    for (let ox = 0; ox < W; ox++) {
+      const x0 = ox * block;
+      const x1 = Math.min(cols, x0 + block);
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+          const c = palLin[indices[y * cols + x]];
+          r += c[0];
+          g += c[1];
+          b += c[2];
+          n++;
+        }
+      }
+      const o = (oy * W + ox) * 4;
+      out[o] = lin2srgb(r / n);
+      out[o + 1] = lin2srgb(g / n);
+      out[o + 2] = lin2srgb(b / n);
+      out[o + 3] = 255;
+    }
+  }
+  return { data: out, width: W, height: H };
 }
 
 /** Count cells per palette color (for UI stats / filament usage estimate). */
