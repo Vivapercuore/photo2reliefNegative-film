@@ -26,6 +26,11 @@ export function lin2srgb(n: number): number {
   return c < 0 ? 0 : c > 1 ? 1 : c;
 }
 
+/** Rec.709 relative luminance of a linear-RGB triple. */
+export function relLum(r: number, g: number, b: number): number {
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
 export interface CmykCalibration {
   /** absorption coefficient (1/mm), filament [C,M,Y,K] × channel [R,G,B] */
   alpha: number[][];
@@ -55,10 +60,10 @@ const CLIP_LO = 3;
 /** Filament order, matching CMYK_PALETTE (4th is White, the luminance layer). */
 export const CAL_FILAMENTS = ['C', 'M', 'Y', 'W'] as const;
 
-/** Thickness (mm) at which the default model shows a filament's palette colour.
- *  Kept near the default per-channel cap (maxLevels≈6 × 0.08 ≈ 0.5mm) so the
- *  uncalibrated preview reaches reasonable saturation rather than looking washed
- *  out; real calibration replaces these coefficients anyway. */
+/** Thickness (mm) at which the default model shows a filament's palette colour
+ *  — a modest 0.5mm so the uncalibrated preview reaches reasonable saturation
+ *  rather than looking washed out; real calibration replaces these coefficients
+ *  (and their saturationLayers ceilings) anyway. */
 const DEFAULT_FULL_MM = 0.5;
 /** Transmission floor so pure primaries (channel = 0) don't give α = ∞. */
 const DEFAULT_FLOOR = 0.02;
@@ -121,6 +126,31 @@ export const CALIBRATION_PRESETS: CalibrationPreset[] = [
   },
 ];
 
+/** Linear transmission at the near-black perceptual floor (sRGB ≈ 3/255):
+ *  past this, one more layer of a strong absorber moves the output by less than
+ *  one 8-bit code value, i.e. extra thickness is no longer distinguishable. */
+export const SAT_FLOOR_LIN = srgb2lin(3 / 255);
+
+/**
+ * Per-filament "full-ink" thickness in LAYERS: the layer count at which a
+ * filament's STRONGEST-absorbing channel reaches SAT_FLOOR_LIN. Beyond it,
+ * stacking more of that filament is perceptually indistinguishable, so it is
+ * the natural per-channel ceiling. Driven entirely by the calibrated α —
+ * strong absorbers saturate in fewer layers, the near-neutral white diffuser
+ * takes the most (its layers carry the luminance ladder). The colour→thickness
+ * solve is later compressed into these ceilings rather than hard-clipped.
+ */
+export function saturationLayers(
+  cal: CmykCalibration,
+  layerMm: number
+): [number, number, number, number] {
+  const lnFloor = -Math.log(SAT_FLOOR_LIN); // ≈ 7.0
+  return cal.alpha.map((a) => {
+    const aMax = Math.max(a[0], a[1], a[2], 1e-6);
+    return Math.max(1, Math.ceil(lnFloor / aMax / layerMm));
+  }) as [number, number, number, number];
+}
+
 /**
  * Forward model: per-channel transmission through a stack with the given
  * per-filament thicknesses (mm), in linear light. I₀ = `white`.
@@ -137,37 +167,42 @@ export function transmit(cal: CmykCalibration, thicknessMm: number[]): [number, 
 
 /**
  * Build the colour→thickness solver for the CMY+White lithophane. Returns
- * per-filament thicknesses (mm, ≥ 0) in order [C, M, Y, W].
+ * per-filament thicknesses (mm) in order [C, M, Y, W], each clamped to its
+ * `capMm` ceiling, as the closest PRINTABLE point — no global post-scaling.
  *
- * White (the neutral diffuser) carries LUMINANCE, C/M/Y carry CHROMA — so we
- * split rather than run a plain 4-channel NNLS (which, because the CMY inks
- * have stronger α than white, would mix grays out of C+M+Y and leave white
- * unused — the opposite of the lithophane intent). Per pixel:
- *   1. needed optical density d_c = −ln(target_c / white_c) per RGB channel;
- *   2. white provides the NEUTRAL part = min_c(d_c) → t_W = d_min / mean(α_W);
- *   3. the per-channel residual d_c − α_W[c]·t_W is the chroma, solved for
- *      C/M/Y by 3×3 non-negative least squares (coordinate descent).
- * The 3×3 Gram matrix is built once (A is the same for every pixel).
+ * Joint 4-channel box-constrained least squares (NNLS by coordinate descent).
+ * Crucially we DON'T force white to carry the neutral/luminance part: a single
+ * translucent ink (or the white diffuser) can't actually block light to black —
+ * only a balanced C+M+Y stack absorbs every band, so neutral darks come out as
+ * a three-colour mix (true, untinted black). White is the weakest absorber, so
+ * the ridge (min-norm tie-break) keeps it OUT of the heavy darkening and only
+ * lets it supplement where C/M/Y hit their caps (the "not black enough" fill).
+ *   d_c = −ln(target_c / white_c);  minimize Σ_c (Σ_f α[f][c]·t_f − d_c)²
+ *   subject to 0 ≤ t_f ≤ capMm[f].
+ * The 4×4 Gram matrix is built once (A is the same for every pixel).
  */
 export function makeLithophaneSolver(
   cal: CmykCalibration,
-  ridge = 2e-3
+  ridge = 2e-3,
+  capMm?: [number, number, number, number]
 ): (targetLin: number[]) => number[] {
-  const aw = cal.alpha[3]; // white absorption per channel (≈ neutral)
-  const awMean = Math.max(1e-6, (aw[0] + aw[1] + aw[2]) / 3);
-  // 3×3 A for CMY: A[c][f] = α[f][c], f ∈ {C,M,Y}
+  const cap = capMm ?? [Infinity, Infinity, Infinity, Infinity];
+  // 3×4 A: A[c][f] = α[f][c], f ∈ {C,M,Y,W}
   const A: number[][] = [[], [], []];
-  for (let c = 0; c < 3; c++) for (let f = 0; f < 3; f++) A[c][f] = cal.alpha[f][c];
+  for (let c = 0; c < 3; c++) for (let f = 0; f < 4; f++) A[c][f] = cal.alpha[f][c];
+  // 4×4 Gram + ridge. A touch more ridge on white (f=3) nudges the solver to
+  // reach for the strong C/M/Y inks first, so blacks stay neutral.
   const G: number[][] = [
-    [0, 0, 0],
-    [0, 0, 0],
-    [0, 0, 0],
+    [0, 0, 0, 0],
+    [0, 0, 0, 0],
+    [0, 0, 0, 0],
+    [0, 0, 0, 0],
   ];
-  for (let f = 0; f < 3; f++)
-    for (let h = 0; h < 3; h++) {
+  for (let f = 0; f < 4; f++)
+    for (let h = 0; h < 4; h++) {
       let s = 0;
       for (let c = 0; c < 3; c++) s += A[c][f] * A[c][h];
-      G[f][h] = s + (f === h ? ridge : 0);
+      G[f][h] = s + (f === h ? (f === 3 ? ridge * 8 : ridge) : 0);
     }
   return (targetLin: number[]): number[] => {
     const d = [0, 0, 0];
@@ -175,27 +210,23 @@ export function makeLithophaneSolver(
       const ratio = Math.min(1, Math.max(1e-4, targetLin[c] / cal.white[c]));
       d[c] = -Math.log(ratio);
     }
-    // white = neutral luminance component
-    const dmin = Math.min(d[0], d[1], d[2]);
-    const tW = Math.max(0, dmin / awMean);
-    // chroma residual after white's actual per-channel contribution
-    const dr = [0, 0, 0];
-    for (let c = 0; c < 3; c++) dr[c] = Math.max(0, d[c] - aw[c] * tW);
-    const Atd = [0, 0, 0];
-    for (let f = 0; f < 3; f++) {
+    const b = [0, 0, 0, 0];
+    for (let f = 0; f < 4; f++) {
       let s = 0;
-      for (let c = 0; c < 3; c++) s += A[c][f] * dr[c];
-      Atd[f] = s;
+      for (let c = 0; c < 3; c++) s += A[c][f] * d[c];
+      b[f] = s;
     }
-    const t = [0, 0, 0];
-    for (let it = 0; it < 24; it++) {
-      for (let f = 0; f < 3; f++) {
-        let s = Atd[f];
-        for (let h = 0; h < 3; h++) if (h !== f) s -= G[f][h] * t[h];
-        t[f] = Math.max(0, G[f][f] > 0 ? s / G[f][f] : 0);
+    const t = [0, 0, 0, 0];
+    for (let it = 0; it < 30; it++) {
+      for (let f = 0; f < 4; f++) {
+        let s = b[f];
+        for (let h = 0; h < 4; h++) if (h !== f) s -= G[f][h] * t[h];
+        // project onto the box [0, cap[f]]
+        const v = G[f][f] > 0 ? s / G[f][f] : 0;
+        t[f] = v < 0 ? 0 : v > cap[f] ? cap[f] : v;
       }
     }
-    return [t[0], t[1], t[2], tW];
+    return t;
   };
 }
 

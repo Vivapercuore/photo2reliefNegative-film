@@ -8,6 +8,7 @@ import {
   Message,
   Tag,
   Spin,
+  Upload,
   // @ts-ignore arco 类型偶尔解析不到
 } from '@arco-design/web-react';
 import * as THREE from 'three';
@@ -15,8 +16,7 @@ import { useDocumentTitle } from '../useDocumentTitle';
 import { PhotoSizeMap } from '../constants';
 import ZoomableImage from '../ZoomableImage';
 import ModelViewer from '../laser/viewer/ModelViewer';
-import { pack3mf } from '../export/bambu/build3mf';
-import { makeThumbnails } from '../export/bambu/thumbnail';
+import { pack3mf, makeThumbnails } from 'bambu-3mf';
 import { gridSizeFor } from '../colorPositive/dither';
 import { splitBoxSolids } from '../colorPositive/buildColorField';
 import { quantizeCmyk, cmykToRGBA, cmykStats, CmykField, CMYK_PALETTE } from './cmyk';
@@ -29,7 +29,6 @@ import {
 } from './calibration';
 import CalibrationTable from './CalibrationTable';
 import CalibrationPicker from './CalibrationPicker';
-import PhotoDropZone from './PhotoDropZone';
 import './ColorCmyk.css';
 
 interface Stats {
@@ -40,6 +39,8 @@ interface Stats {
   avgInk: [number, number, number, number];
   minLevels: number;
   maxLevelsTotal: number;
+  /** per-channel peak thickness in layers (C,M,Y,W) */
+  maxLayers: [number, number, number, number];
 }
 
 function saveBlob(data: BlobPart, filename: string) {
@@ -72,8 +73,10 @@ const ColorCmyk: React.FC = () => {
 
   const [maxLength, setMaxLength] = useState(152);
   const [dotMm, setDotMm] = useState(0.6);
-  const [maxLevels, setMaxLevels] = useState(10);
+  // 目标总厚度（mm，含白底）；null = 自然厚度（不缩放）。按 0.08 梯度调整。
+  const [thicknessTargetMm, setThicknessTargetMm] = useState<number | null>(null);
   const [baseLayers, setBaseLayers] = useState(2);
+  const [topLayers, setTopLayers] = useState(1);
   const [addBorder, setAddBorder] = useState(false);
   const [borderWidth, setBorderWidth] = useState(3);
   const [imageUrl, setImageUrl] = useState('');
@@ -109,6 +112,9 @@ const ColorCmyk: React.FC = () => {
   const viewGroupRef = useRef<THREE.Group | null>(null);
   const partsRef = useRef<CmykPart[]>([]);
   const [viewObject, setViewObject] = useState<THREE.Object3D | null>(null);
+  // 预览中单独隐藏的颜色（按调色板 id：C/M/Y/W）。ref 让重建模型时读到最新值。
+  const [hidden, setHidden] = useState<Record<string, boolean>>({});
+  const hiddenRef = useRef(hidden);
   const [fieldVersion, setFieldVersion] = useState(0);
   const [triangles, setTriangles] = useState(0);
   const [generating, setGenerating] = useState(false);
@@ -137,6 +143,7 @@ const ColorCmyk: React.FC = () => {
 
   const onFile = useCallback((file: File) => {
     setFileName(file.name);
+    setThicknessTargetMm(null); // 新图回到自然厚度
     const reader = new FileReader();
     reader.onload = (e) => {
       const url = e.target?.result as string;
@@ -170,7 +177,8 @@ const ColorCmyk: React.FC = () => {
       cal,
       layerMm: LAYER_MM,
       baseLayers,
-      maxLevels,
+      topLayers,
+      targetTotalMm: thicknessTargetMm ?? undefined,
     });
     fieldRef.current = field;
 
@@ -180,7 +188,7 @@ const ColorCmyk: React.FC = () => {
     const ocx = oc.getContext('2d');
     if (!ocx) return;
     ocx.putImageData(
-      new ImageData(cmykToRGBA(field, cal, LAYER_MM, baseLayers), grid.cols, grid.rows),
+      new ImageData(cmykToRGBA(field, cal, LAYER_MM, baseLayers, topLayers), grid.cols, grid.rows),
       0,
       0
     );
@@ -195,9 +203,10 @@ const ColorCmyk: React.FC = () => {
       avgInk: s.avgInk,
       minLevels: s.minLevels,
       maxLevelsTotal: s.maxLevelsTotal,
+      maxLayers: s.maxLayers,
     });
     setFieldVersion((v) => v + 1);
-  }, [imgReady, maxLength, dotMm, maxLevels, baseLayers, cal]);
+  }, [imgReady, maxLength, dotMm, thicknessTargetMm, baseLayers, topLayers, cal]);
 
   // auto-(re)build the 3D model (debounced so the Spin can show)
   useEffect(() => {
@@ -210,6 +219,7 @@ const ColorCmyk: React.FC = () => {
         const parts = buildCmykParts(field, {
           layerMm: LAYER_MM,
           baseLayers,
+          topLayers,
           addBorder,
           borderWidth,
         });
@@ -226,12 +236,22 @@ const ColorCmyk: React.FC = () => {
             metalness: 0,
             side: THREE.DoubleSide,
           });
-          group.add(new THREE.Mesh(p.geometry, mat));
+          const mesh = new THREE.Mesh(p.geometry, mat);
+          mesh.userData.cmykId = p.palette.id; // 供「单独隐藏/显示某色」切换用
+          mesh.visible = !hiddenRef.current[p.palette.id];
+          group.add(mesh);
           tris += p.triangles;
         });
         const W = field.cols * field.dotMm;
         const D = field.rows * field.dotMm;
-        const H = (baseLayers + field.maxLevels * 4) * LAYER_MM;
+        // center on the actual tallest stacked column (base + channels + top cap)
+        const [c0, c1, c2, c3] = field.channels;
+        let maxTotal = 0;
+        for (let i = 0; i < c0.length; i++) {
+          const t = c0[i] + c1[i] + c2[i] + c3[i];
+          if (t > maxTotal) maxTotal = t;
+        }
+        const H = (baseLayers + maxTotal + topLayers) * LAYER_MM;
         group.position.set(-W / 2, -H / 2, -D / 2);
         viewGroupRef.current = group;
         setTriangles(tris);
@@ -243,7 +263,19 @@ const ColorCmyk: React.FC = () => {
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [fieldVersion, baseLayers, addBorder, borderWidth, disposeView]);
+  }, [fieldVersion, baseLayers, topLayers, addBorder, borderWidth, disposeView]);
+
+  // toggle per-colour mesh visibility live (no rebuild — the viewer renders on a
+  // continuous loop). Re-applied whenever the model rebuilds.
+  useEffect(() => {
+    hiddenRef.current = hidden;
+    const g = viewGroupRef.current;
+    if (!g) return;
+    g.children.forEach((o) => {
+      const id = (o as THREE.Mesh).userData?.cmykId as string | undefined;
+      if (id) o.visible = !hidden[id];
+    });
+  }, [hidden, viewObject]);
 
   const doExport = useCallback(async () => {
     const parts = partsRef.current;
@@ -320,20 +352,16 @@ const ColorCmyk: React.FC = () => {
         <div className="colorcmyk-panel">
           <List size="large" header="选择彩色照片，生成 CMYK 透光彩画">
             <List.Item key="calibration">
-              <div className="title">耗材校准</div>
+              <div className="title">耗材校准（必选）</div>
               <div className="describe">
-                每种耗材的颜色和透光系数不同，校准后预览和成品才一致。
-                {cal.calibrated
-                  ? cal.label
-                    ? `当前使用预设「${cal.label}」。`
-                    : '当前已使用自定义校准。'
-                  : '当前未校准，先用按调色板推算的默认值——点下面的预设可一键套用，或去打印校准片实测。'}
+                先选一套耗材校准——不同耗材的颜色与透光不同，选对了预览才接近成品。
+                {cal.calibrated ? (cal.label ? ` 当前：预设「${cal.label}」。` : ' 当前：自定义校准。') : ''}
               </div>
               <div className="colorcmyk-switch">
                 {cal.calibrated ? (
                   <Tag color="green">{cal.label ? `预设：${cal.label}` : '已校准'}</Tag>
                 ) : (
-                  <Tag color="gray">未校准</Tag>
+                  <Tag color="orange">未选择 · 必选</Tag>
                 )}
                 <Button size="small" onClick={() => navigate('/color-cmyk/calibrate')}>
                   {cal.calibrated ? '重新校准 / 查看' : '去校准耗材'}
@@ -360,17 +388,33 @@ const ColorCmyk: React.FC = () => {
               </div>
             </List.Item>
 
-            <List.Item key="upload">
-              <div className="title">选择图像</div>
-              <PhotoDropZone
-                onFile={onFile}
-                loaded={!!fileName}
-                hint="支持 jpg/png · 全部在本地处理，不会离开你的设备"
-              />
-            </List.Item>
-
-            {fileName ? (
+            {!cal.calibrated ? (
+              <List.Item key="needcal">
+                <div className="colorcmyk-warn">
+                  请先在上方选择一套耗材校准（点预设一键套用，或「去校准耗材」实测），再选择图像。
+                </div>
+              </List.Item>
+            ) : (
               <>
+                <List.Item key="upload">
+                  <div className="title">选择图像</div>
+                  <div className="describe">支持 jpg/png，全部在本地浏览器处理，不上传服务器。</div>
+                  <Upload
+                    drag
+                    accept="image/*"
+                    limit={1}
+                    autoUpload={false}
+                    showUploadList
+                    onChange={(list: any[]) => {
+                      const f = list && list[list.length - 1];
+                      if (f?.originFile) onFile(f.originFile);
+                    }}
+                    tip="仅支持图片"
+                  />
+                </List.Item>
+
+                {fileName ? (
+                  <>
                 <List.Item key="preview">
                   <div
                     className="colorcmyk-collapse-head"
@@ -400,24 +444,10 @@ const ColorCmyk: React.FC = () => {
                   ) : null}
                 </List.Item>
 
-                <List.Item key="howto">
-                  <div className="title">成像原理</div>
-                  <div className="describe">
-                    CMY + 白 透光成像：底层<b>白色</b>是扩散/明度层，厚度控制明暗（越厚越暗，类似光刻画），
-                    青/品红/黄叠在上面按厚度减色上色。自下而上 白→黄→品红→青 堆叠，背光透射时混合显色。
-                    4 色 AMS 即可打印，无需暂停换料；建议 C/M/Y 用半透明耗材、白色用扩散白。
-                  </div>
-                  <div className="describe">
-                    注意：右侧 3D 预览是不透光时从顶面看到的外观（顶层是青/品红/黄，颜色偏色属正常）；
-                    实际透光显色效果以上方「量化预览」为准。
-                  </div>
-                </List.Item>
-
                 <List.Item key="dot">
                   <div className="title">像素点尺寸 (mm)</div>
                   <div className="describe">
-                    单个像素点的物理边长，最小 0.2mm。越小画面越细腻、像素越多，生成与切片也越慢；
-                    CMYK 靠厚度表现明暗，对像素尺寸不如抖动方案敏感，建议 0.4~0.8。
+                    越小越细腻、像素越多、生成越慢。建议 0.4~0.8mm。
                   </div>
                   <InputNumber
                     style={{ width: 180 }}
@@ -460,31 +490,73 @@ const ColorCmyk: React.FC = () => {
                   />
                 </List.Item>
 
-                <List.Item key="levels">
-                  <div className="title">明度层数（每通道）</div>
+                <List.Item key="thickness">
+                  <div className="title">模型厚度</div>
                   <div className="describe">
-                    每个通道满墨时的层数，单层 {LAYER_MM}mm。层数越多明度过渡越细腻，模型也越厚：
-                    当前每通道最大 {(maxLevels * LAYER_MM).toFixed(2)}mm，四通道叠加最大{' '}
-                    {(maxLevels * 4 * LAYER_MM).toFixed(2)}mm。
+                    总厚度与各色最高厚度。按 {LAYER_MM}mm 缩放总厚度：调薄更省料、更透亮（饱和度降低），
+                    调厚显色更浓郁（到色域上限为止）。白色底层/顶层固定，不参与缩放。
                   </div>
-                  <InputNumber
-                    style={{ width: 180 }}
-                    mode="button"
-                    suffix="层"
-                    min={2}
-                    max={12}
-                    step={1}
-                    precision={0}
-                    value={maxLevels}
-                    onChange={(v: number) => setMaxLevels(v)}
-                  />
+                  {stats ? (
+                    <>
+                      <div style={{ margin: '6px 0 2px', fontSize: 15 }}>
+                        总厚度{' '}
+                        <b style={{ fontSize: 17 }}>
+                          {((baseLayers + topLayers + stats.maxLevelsTotal) * LAYER_MM).toFixed(2)} mm
+                        </b>
+                        <span style={{ marginLeft: 8, color: 'var(--color-text-3)', fontSize: 12 }}>
+                          白底 {(baseLayers * LAYER_MM).toFixed(2)} + 顶白 {(topLayers * LAYER_MM).toFixed(2)} +
+                          彩色最高 {(stats.maxLevelsTotal * LAYER_MM).toFixed(2)}（共{' '}
+                          {baseLayers + topLayers + stats.maxLevelsTotal} 层）
+                        </span>
+                      </div>
+                      <div className="colorcmyk-counts">
+                        {CMYK_PALETTE.map((p, i) => {
+                          // 白色（i=3）的总占用 = 底层 + 顶层 + 该处额外白；C/M/Y 为各自通道峰值
+                          const layers =
+                            i === 3 ? baseLayers + topLayers + stats.maxLayers[3] : stats.maxLayers[i];
+                          return (
+                            <span key={p.id} className="colorcmyk-count">
+                              <i
+                                className="colorcmyk-swatch"
+                                style={{ background: `rgb(${p.rgb.join(',')})` }}
+                              />
+                              {p.label} 最厚 {(layers * LAYER_MM).toFixed(2)}mm（{layers} 层）
+                            </span>
+                          );
+                        })}
+                      </div>
+                      <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span>缩放总厚度</span>
+                        <InputNumber
+                          style={{ width: 170 }}
+                          mode="button"
+                          suffix="mm"
+                          min={Number(((baseLayers + topLayers + 1) * LAYER_MM).toFixed(2))}
+                          max={20}
+                          step={LAYER_MM}
+                          precision={2}
+                          value={Number(
+                            (
+                              thicknessTargetMm ??
+                              (baseLayers + topLayers + stats.maxLevelsTotal) * LAYER_MM
+                            ).toFixed(2)
+                          )}
+                          onChange={(v: number) => setThicknessTargetMm(v)}
+                        />
+                        {thicknessTargetMm != null ? (
+                          <Button size="small" onClick={() => setThicknessTargetMm(null)}>
+                            恢复自然
+                          </Button>
+                        ) : null}
+                      </div>
+                    </>
+                  ) : null}
                 </List.Item>
 
                 <List.Item key="base">
                   <div className="title">白色底层（扩散层）层数</div>
                   <div className="describe">
-                    白色扩散底层整板，单层 {LAYER_MM}mm。它把背光匀化成白场，并避免纯白像素变成
-                    通孔；越厚整体越偏暗。除非刻意想要镂空，否则建议至少 1~2 层。
+                    匀化背光、避免纯白区镂空；越厚整体越暗。建议 1~2 层。
                   </div>
                   <InputNumber
                     style={{ width: 180 }}
@@ -500,6 +572,24 @@ const ColorCmyk: React.FC = () => {
                   {baseLayers === 0 ? (
                     <div className="colorcmyk-warn">白色底层为 0：纯白区域将成为通孔，且背光不均。</div>
                   ) : null}
+                </List.Item>
+
+                <List.Item key="top">
+                  <div className="title">白色顶层（覆盖层）层数</div>
+                  <div className="describe">
+                    在彩色层之上覆盖白色，统一顶面、起扩散/保护作用；越厚整体越暗。0 = 不覆盖。
+                  </div>
+                  <InputNumber
+                    style={{ width: 180 }}
+                    mode="button"
+                    suffix="层"
+                    min={0}
+                    max={12}
+                    step={1}
+                    precision={0}
+                    value={topLayers}
+                    onChange={(v: number) => setTopLayers(v)}
+                  />
                 </List.Item>
 
                 <List.Item key="border">
@@ -581,15 +671,71 @@ const ColorCmyk: React.FC = () => {
                     导出 CMYK 多色 3MF
                   </Button>
                 </List.Item>
+                  </>
+                ) : null}
               </>
-            ) : null}
+            )}
           </List>
         </div>
 
-        <div className="colorcmyk-viewer">
+        <div className="colorcmyk-viewer" style={{ position: 'relative' }}>
+          {viewObject ? (
+            <div
+              style={{
+                position: 'absolute',
+                top: 10,
+                left: 10,
+                zIndex: 5,
+                display: 'flex',
+                gap: 6,
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                background: 'rgba(20,20,20,0.55)',
+                padding: '6px 8px',
+                borderRadius: 8,
+              }}
+            >
+              <span style={{ color: '#ccc', fontSize: 12, marginRight: 2 }}>显示颜色</span>
+              {CMYK_PALETTE.map((p) => {
+                const off = !!hidden[p.id];
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => setHidden((h) => ({ ...h, [p.id]: !h[p.id] }))}
+                    title={off ? `显示${p.label}` : `隐藏${p.label}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      cursor: 'pointer',
+                      border: `1px solid ${off ? '#555' : '#aaa'}`,
+                      background: off ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.16)',
+                      color: off ? '#888' : '#fff',
+                      borderRadius: 6,
+                      padding: '2px 8px',
+                      fontSize: 12,
+                      textDecoration: off ? 'line-through' : 'none',
+                    }}
+                  >
+                    <i
+                      style={{
+                        width: 11,
+                        height: 11,
+                        borderRadius: 2,
+                        background: `rgb(${p.rgb.join(',')})`,
+                        outline: '1px solid rgba(255,255,255,0.4)',
+                        opacity: off ? 0.4 : 1,
+                      }}
+                    />
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
           <Spin loading={generating} tip="生成模型中…" style={{ width: '100%', height: '100%' }}>
             {viewObject ? (
-              <ModelViewer object={viewObject} className="colorcmyk-3d" />
+              <ModelViewer object={viewObject} className="colorcmyk-3d" revision={hidden} />
             ) : (
               <div className="colorcmyk-empty">
                 选择图片、设置参数后
