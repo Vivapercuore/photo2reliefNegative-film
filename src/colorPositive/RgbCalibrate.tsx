@@ -10,7 +10,7 @@ import {
   // @ts-ignore arco 类型偶尔解析不到
 } from '@arco-design/web-react';
 import { useDocumentTitle } from '../useDocumentTitle';
-import { pack3mf } from '../export/bambu/build3mf';
+import { pack3mf } from 'bambu-3mf';
 import { splitBoxSolids } from './buildColorField';
 import { buildRgbCalibrationTile, CAL_ROWS, CAL_LAYER_MM } from './buildRgbCalibrationTile';
 import {
@@ -26,7 +26,6 @@ import {
   nextAutoName,
   autoChromaGain,
   MAX_CHROMA_GAIN,
-  PRIMARY_LABEL,
   PRIMARY_NOMINAL,
 } from './calibration';
 import RgbCalibrationTable from './RgbCalibrationTable';

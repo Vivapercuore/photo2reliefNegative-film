@@ -19,8 +19,7 @@ import { useDocumentTitle } from '../useDocumentTitle';
 import { PhotoSizeMap } from '../constants';
 import ZoomableImage from '../ZoomableImage';
 import ModelViewer from '../laser/viewer/ModelViewer';
-import { pack3mf, PauseLayer } from '../export/bambu/build3mf';
-import { makeThumbnails } from '../export/bambu/thumbnail';
+import { pack3mf, PauseLayer, makeThumbnails } from 'bambu-3mf';
 import {
   gridSizeFor,
   ditherToPalette,
@@ -223,6 +222,8 @@ const ColorPositive: React.FC = () => {
       total: grid.cols * grid.rows,
     });
     setDitherVersion((v) => v + 1);
+    // palette 由 paletteMode 派生（paletteMode 已在依赖内）；依赖刻意精简，无需重复列入
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imgReady, maxLength, paletteMode, dotMm, cal]);
 
   // auto-(re)build the 3D model whenever the dither or thickness/border changes
@@ -270,6 +271,9 @@ const ColorPositive: React.FC = () => {
       }
     }, 300);
     return () => clearTimeout(timer);
+    // cal 变化经 ditherVersion 链路触发重建，palette 由 paletteMode 派生；
+    // 依赖刻意精简，避免对同一次校准重复重建
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ditherVersion, colorThickness, baseThickness, addBorder, borderWidth, hasWideAms, flattenTop, disposeView]);
 
   const palette =
