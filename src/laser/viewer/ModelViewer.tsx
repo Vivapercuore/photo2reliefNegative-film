@@ -6,6 +6,9 @@ interface ModelViewerProps {
   /** the model to display; pass null to clear */
   object: THREE.Object3D | null;
   className?: string;
+  /** bump/change this to force a redraw when the scene mutates WITHOUT a new
+   *  `object` (e.g. toggling a child mesh's visibility) — render is on-demand */
+  revision?: unknown;
 }
 
 /**
@@ -35,13 +38,15 @@ function getSharedRenderer(): THREE.WebGLRenderer | null {
   }
 }
 
-const ModelViewer: React.FC<ModelViewerProps> = ({ object, className }) => {
+const ModelViewer: React.FC<ModelViewerProps> = ({ object, className, revision }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const gridRef = useRef<THREE.GridHelper | null>(null);
   const currentObject = useRef<THREE.Object3D | null>(null);
+  // render-on-demand flag: draw only when the camera moved or the scene changed
+  const invalidate = useRef(true);
   const [glError, setGlError] = useState(false);
 
   // per-mount scene setup; reuses the shared renderer's canvas
@@ -96,13 +101,26 @@ const ModelViewer: React.FC<ModelViewerProps> = ({ object, className }) => {
     scene.add(grid);
     gridRef.current = grid;
 
+    // redraw whenever the camera changes (user drag/zoom, and each damping step)
+    controls.addEventListener('change', () => {
+      invalidate.current = true;
+    });
+
     let frameId = 0;
     let disposed = false;
+    // Render ON DEMAND: the scene is static between interactions, so only draw
+    // when something invalidated it. Continuously re-rendering a heavy (100k+
+    // triangle) static scene at the display refresh rate pegs the CPU/GPU for
+    // no reason. controls.update() still runs each frame to advance damping
+    // (which fires 'change' → sets the flag while it keeps moving).
     const animate = () => {
       if (disposed) return;
-      controls.update();
-      renderer.render(scene, camera);
       frameId = requestAnimationFrame(animate);
+      controls.update();
+      if (invalidate.current) {
+        renderer.render(scene, camera);
+        invalidate.current = false;
+      }
     };
 
     // Defer the actual resize work to the next frame. Doing it synchronously
@@ -121,10 +139,18 @@ const ModelViewer: React.FC<ModelViewerProps> = ({ object, className }) => {
           camera.aspect = w / h;
           camera.updateProjectionMatrix();
           renderer.setSize(w, h);
+          invalidate.current = true;
         }
       });
     });
     ro.observe(container);
+
+    // rAF is paused while the tab is hidden; redraw once it's visible again so a
+    // model that rebuilt in the background isn't left stale.
+    const onVisible = () => {
+      if (!document.hidden) invalidate.current = true;
+    };
+    document.addEventListener('visibilitychange', onVisible);
 
     frameId = requestAnimationFrame(animate);
 
@@ -132,6 +158,7 @@ const ModelViewer: React.FC<ModelViewerProps> = ({ object, className }) => {
       disposed = true;
       cancelAnimationFrame(frameId);
       if (resizeRaf) cancelAnimationFrame(resizeRaf);
+      document.removeEventListener('visibilitychange', onVisible);
       ro.disconnect();
       controls.dispose();
       // Detach (but DON'T dispose) the shared renderer so it survives for the
@@ -199,7 +226,13 @@ const ModelViewer: React.FC<ModelViewerProps> = ({ object, className }) => {
     grid.position.set(center.x, box.min.y, center.z);
     scene.add(grid);
     gridRef.current = grid;
+    invalidate.current = true; // new model → draw once
   }, [object]);
+
+  // external scene mutation (e.g. a child mesh's visibility toggled) → redraw
+  useEffect(() => {
+    invalidate.current = true;
+  }, [revision]);
 
   return (
     <div
