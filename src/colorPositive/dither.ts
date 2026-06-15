@@ -7,6 +7,8 @@
  * dots mix into bright colors when light shines through, black blocks light.
  */
 
+import { RgbCalibration, primaryLin, projectToHull, lin2srgb } from './calibration';
+
 export interface PaletteColor {
   /** short id used in UI / as the per-color object name */
   id: string;
@@ -144,7 +146,8 @@ export function ditherToPalette(
   cols: number,
   rows: number,
   dotMm: number,
-  palette: PaletteColor[]
+  palette: PaletteColor[],
+  cal?: RgbCalibration
 ): DitherResult {
   const buf = downsampleRGB(src, cols, rows);
   const indices = new Uint8Array(cols * rows);
@@ -157,7 +160,12 @@ export function ditherToPalette(
     return 255 * (n <= 0.04045 ? n / 12.92 : Math.pow((n + 0.055) / 1.055, 2.4));
   };
   for (let i = 0; i < buf.length; i++) buf[i] = srgb2lin(buf[i]);
-  const pal = palette.map((p) => p.rgb.map(srgb2lin));
+  // Palette colours in linear 0..255: when calibrated, use each filament's
+  // REAL measured colour instead of the ideal primary — this is the core of the
+  // 偏色 fix (matching/diffusion now target reachable colours).
+  const pal = cal
+    ? palette.map((p) => primaryLin(cal, p.id).map((v) => 255 * v))
+    : palette.map((p) => p.rgb.map(srgb2lin));
 
   // Project each pixel into the palette's achievable gamut (the convex hull of
   // the dot colors in linear light). Side-by-side dots DILUTE: a mix of
@@ -169,7 +177,19 @@ export function ditherToPalette(
   // into neighbouring regions. Scaling the pixel onto the hull keeps hue and
   // saturation, trades only brightness — and keeps the diffusion error bounded.
   // (Only valid when the palette has K as the "empty" filler.)
-  if (palette.some((p) => p.id === 'K')) {
+  if (cal) {
+    // The measured primaries form a smaller, real gamut. Project every pixel
+    // onto its convex hull (closest reachable colour) so out-of-gamut targets
+    // can't make the diffusion residual run away — generalises the K-only
+    // excess clamp below and, crucially, also covers RGBW (no K) which had no
+    // gamut handling at all.
+    for (let i = 0; i < buf.length; i += 3) {
+      const p = projectToHull([buf[i], buf[i + 1], buf[i + 2]], pal);
+      buf[i] = p[0];
+      buf[i + 1] = p[1];
+      buf[i + 2] = p[2];
+    }
+  } else if (palette.some((p) => p.id === 'K')) {
     for (let i = 0; i < buf.length; i += 3) {
       const m = Math.min(buf[i], buf[i + 1], buf[i + 2]);
       const excess = buf[i] + buf[i + 1] + buf[i + 2] - 2 * m;
@@ -228,12 +248,17 @@ export function ditherToPalette(
   return { cols, rows, dotMm, indices, palette };
 }
 
-/** Expand a dither result back to an RGBA buffer for on-screen preview. */
-export function indicesToRGBA(res: DitherResult): Uint8ClampedArray {
+/** Expand a dither result back to an RGBA buffer for on-screen preview. When a
+ *  calibration is supplied the dots are drawn in their REAL measured colours so
+ *  the zoomed dot map matches the print. */
+export function indicesToRGBA(res: DitherResult, cal?: RgbCalibration): Uint8ClampedArray {
   const { cols, rows, indices, palette } = res;
+  const colors = palette.map((p) =>
+    cal ? primaryLin(cal, p.id).map((v) => 255 * lin2srgb(v)) : p.rgb
+  );
   const out = new Uint8ClampedArray(cols * rows * 4);
   for (let i = 0; i < indices.length; i++) {
-    const c = palette[indices[i]].rgb;
+    const c = colors[indices[i]];
     const o = i * 4;
     out[o] = c[0];
     out[o + 1] = c[1];
@@ -252,16 +277,20 @@ export function indicesToRGBA(res: DitherResult): Uint8ClampedArray {
  */
 export function simulateRGBA(
   res: DitherResult,
-  block: number
+  block: number,
+  cal?: RgbCalibration
 ): { data: Uint8ClampedArray; width: number; height: number } {
   const { cols, rows, indices, palette } = res;
-  const palLin = palette.map((p) =>
-    p.rgb.map((v) => {
-      const n = v / 255;
-      return n <= 0.04045 ? n / 12.92 : Math.pow((n + 0.055) / 1.055, 2.4);
-    })
-  );
-  const lin2srgb = (n: number) =>
+  // Average the REAL measured colours when calibrated, else the ideal primaries.
+  const palLin = cal
+    ? palette.map((p) => primaryLin(cal, p.id))
+    : palette.map((p) =>
+        p.rgb.map((v) => {
+          const n = v / 255;
+          return n <= 0.04045 ? n / 12.92 : Math.pow((n + 0.055) / 1.055, 2.4);
+        })
+      );
+  const enc = (n: number) =>
     255 * (n <= 0.0031308 ? 12.92 * n : 1.055 * Math.pow(n, 1 / 2.4) - 0.055);
 
   const W = Math.ceil(cols / block);
@@ -284,9 +313,9 @@ export function simulateRGBA(
         }
       }
       const o = (oy * W + ox) * 4;
-      out[o] = lin2srgb(r / n);
-      out[o + 1] = lin2srgb(g / n);
-      out[o + 2] = lin2srgb(b / n);
+      out[o] = enc(r / n);
+      out[o + 1] = enc(g / n);
+      out[o + 2] = enc(b / n);
       out[o + 3] = 255;
     }
   }

@@ -1,7 +1,16 @@
+.cmykcal,
+.cmykcal *,
+.cmykcal *::before,
+.cmykcal *::after {
+  box-sizing: border-box;
+}
+
 .cmykcal {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
 }
 
 .cmykcal .page-nav {
@@ -18,10 +27,26 @@
 
 .cmykcal-body {
   flex: 1 1 auto;
-  max-width: 760px;
+  max-width: 1380px;
   width: 100%;
   margin: 0 auto;
-  padding: 0 12px 40px;
+  padding: 0 16px 40px;
+}
+
+/* 自适应两栏：窄屏单栏堆叠，宽屏左(校准/步骤①②) + 右(③配准/④结果) */
+.cmykcal-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0 28px;
+  align-items: start;
+}
+@media (min-width: 1024px) {
+  .cmykcal-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+.cmykcal-col {
+  min-width: 0;
 }
 .cmykcal-body .title {
   font-weight: 600;
@@ -40,24 +65,166 @@
   margin-bottom: 10px;
 }
 
-.cmykcal-swatches {
+.cmykcal-presets {
   display: flex;
-  gap: 14px;
+  align-items: center;
   flex-wrap: wrap;
-  margin: 6px 0 10px;
+  gap: 8px;
+  margin: 0 0 10px;
 }
-.cmykcal-sw {
+.cmykcal-presets-label {
+  font-size: 12px;
+  color: var(--color-text-3, #999);
+}
+
+.cmykcal-saved-item {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+}
+.cmykcal-saved-del {
+  padding: 0 6px;
+  line-height: 1;
+}
+
+.cmykcal-name-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 10px 0 4px;
+}
+.cmykcal-name-input {
+  flex: 1 1 220px;
+  min-width: 180px;
+  max-width: 360px;
+}
+
+/* 手动修改子模块：参数表 + 命名保存 + 恢复默认 */
+.cmykcal-editbox {
+  margin-top: 12px;
+  padding: 10px 12px 4px;
+  border: 1px solid var(--color-border-2, #333);
+  border-radius: 4px;
+  background: var(--color-fill-1, rgba(255, 255, 255, 0.03));
+}
+.cmykcal-edit-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+/* 拖点两用照片载入区（自建，无「上传」字样） */
+.cmykcal-drop {
+  border: 1px dashed var(--color-border-3, #5a5a5a);
+  border-radius: 6px;
+  padding: 26px 16px;
+  text-align: center;
+  cursor: pointer;
+  color: var(--color-text-3, #999);
+  transition: border-color 0.2s, background 0.2s, color 0.2s;
+}
+.cmykcal-drop:hover,
+.cmykcal-drop.is-over {
+  border-color: rgb(var(--primary-6, 22, 93, 255));
+  background: var(--color-fill-2, rgba(255, 255, 255, 0.06));
+  color: var(--color-text-1, #e0e0e0);
+}
+.cmykcal-drop-plus {
+  font-size: 30px;
+  line-height: 1;
+  margin-bottom: 8px;
+  color: var(--color-text-3, #999);
+}
+.cmykcal-drop-main {
+  font-size: 14px;
+}
+.cmykcal-drop-sub {
+  font-size: 12px;
+  margin-top: 6px;
+  color: var(--color-text-4, #777);
+}
+
+.cmykcal-collapse-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  padding: 8px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  border-top: 1px solid var(--color-border-2, #333);
+  margin-top: 8px;
+}
+.cmykcal-collapse-icon {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-text-3, #999);
+}
+
+.cmykcal-warn {
+  color: #e0792b;
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 6px 0;
+}
+
+.cmykcal-params {
+  margin-top: 4px;
+}
+
+.cmykcal-swatches {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 6px;
+}
+.cmykcal-sw {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-size: 13px;
 }
-.cmykcal-sw i {
+.cmykcal-sw-label {
+  flex: 0 0 40px;
+  color: var(--color-text-2, #ccc);
+}
+.cmykcal-sw-chip {
   display: inline-block;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: 3px;
   border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* 厚度渐变条：0.08→0.80mm，每格一层；随列宽自适应拉伸（带上限） */
+.cmykcal-ramp-strip {
+  display: flex;
+  flex: 1 1 auto;
+  max-width: 520px;
+  border-radius: 3px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+.cmykcal-ramp-strip i {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 22px;
+  border: none;
+  border-radius: 0;
+  cursor: help;
+  transition: outline-color 0.1s;
+}
+.cmykcal-ramp-strip i:hover {
+  outline: 2px solid var(--color-text-1, #fff);
+  outline-offset: -2px;
+  position: relative;
+  z-index: 1;
+}
+.cmykcal-ramp-cap {
+  font-size: 12px;
+  color: var(--color-text-3, #999);
+  margin: 2px 0 10px;
 }
 
 .cmykcal-guide {
@@ -81,12 +248,18 @@
   border-collapse: collapse;
   margin: 4px 0 12px;
   font-size: 13px;
+  width: 100%;
+  table-layout: fixed;
 }
 .cmykcal-table th,
 .cmykcal-table td {
   border: 1px solid var(--color-border-2, #444);
-  padding: 4px 12px;
+  padding: 5px 8px;
   text-align: center;
+}
+.cmykcal-table th:first-child,
+.cmykcal-table td:first-child {
+  width: 88px;
 }
 .cmykcal-table th {
   color: var(--color-text-3, #999);

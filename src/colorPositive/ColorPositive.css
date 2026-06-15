@@ -96,6 +96,18 @@
   gap: 8px;
 }
 
+/* 耗材校准子区：快捷预设 + 折叠的参数表 */
+.colorpos-cal-sub {
+  margin-top: 10px;
+}
+.colorpos-cal-collapse {
+  font-size: 13px;
+  font-weight: 600;
+  border-top: 1px solid var(--color-border-2, #333);
+  padding-top: 8px;
+  margin-top: 8px;
+}
+
 .colorpos-required {
   color: var(--color-danger-6, #f53f3f);
   font-size: 12px;

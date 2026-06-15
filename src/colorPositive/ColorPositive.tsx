@@ -33,6 +33,16 @@ import {
   DitherResult,
 } from './dither';
 import { buildColorField, partSolids, ColorPart } from './buildColorField';
+import {
+  loadCalibration,
+  saveCalibration,
+  loadSavedCalibrations,
+  primaryLin,
+  lin2srgb,
+  RgbCalibration,
+} from './calibration';
+import RgbCalibrationPicker from './RgbCalibrationPicker';
+import RgbCalibrationTable from './RgbCalibrationTable';
 import './ColorPositive.css';
 
 const RadioGroup = Radio.Group;
@@ -107,6 +117,25 @@ const ColorPositive: React.FC = () => {
   const [generating, setGenerating] = useState(false);
   const [exporting, setExporting] = useState(false);
 
+  // 耗材校准：返回此页时重新读取，保证刚校准完即生效
+  const [cal, setCal] = useState(() => loadCalibration());
+  const [savedCals, setSavedCals] = useState(() => loadSavedCalibrations());
+  const [calParamsOpen, setCalParamsOpen] = useState(false);
+  useEffect(() => {
+    const reload = () => {
+      setCal(loadCalibration());
+      setSavedCals(loadSavedCalibrations());
+    };
+    window.addEventListener('focus', reload);
+    return () => window.removeEventListener('focus', reload);
+  }, []);
+  const applyCal = useCallback((c: RgbCalibration) => {
+    const copy: RgbCalibration = JSON.parse(JSON.stringify(c));
+    saveCalibration(copy);
+    setCal(copy);
+    Message.success(copy.label ? `已应用：${copy.label}` : '已应用校准');
+  }, []);
+
   const baseName = useMemo(
     () => (fileName || 'color').replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|]+/g, '_') || 'color',
     [fileName]
@@ -159,7 +188,9 @@ const ColorPositive: React.FC = () => {
     cx.drawImage(img, 0, 0);
     const src = cx.getImageData(0, 0, img.width, img.height);
 
-    const res = ditherToPalette(src, grid.cols, grid.rows, grid.dotMm, palette);
+    // 仅在已校准时把实测原色喂进抖动/预览；未校准保持原有理想原色路径不变
+    const activeCal = cal.calibrated ? cal : undefined;
+    const res = ditherToPalette(src, grid.cols, grid.rows, grid.dotMm, palette, activeCal);
     ditherResultRef.current = res;
 
     const oc = document.createElement('canvas');
@@ -167,12 +198,12 @@ const ColorPositive: React.FC = () => {
     oc.height = grid.rows;
     const ocx = oc.getContext('2d');
     if (!ocx) return;
-    ocx.putImageData(new ImageData(indicesToRGBA(res), grid.cols, grid.rows), 0, 0);
+    ocx.putImageData(new ImageData(indicesToRGBA(res, activeCal), grid.cols, grid.rows), 0, 0);
     setDitherUrl(oc.toDataURL());
 
     // 透光混色模拟：按线性光块平均，接近成品实际观感（点阵图被浏览器按
     // sRGB 缩放，观感会比实物更艳更硬）
-    const sim = simulateRGBA(res, Math.max(2, Math.round(grid.cols / 380)));
+    const sim = simulateRGBA(res, Math.max(2, Math.round(grid.cols / 380)), activeCal);
     const sc = document.createElement('canvas');
     sc.width = sim.width;
     sc.height = sim.height;
@@ -192,7 +223,7 @@ const ColorPositive: React.FC = () => {
       total: grid.cols * grid.rows,
     });
     setDitherVersion((v) => v + 1);
-  }, [imgReady, maxLength, paletteMode, dotMm]);
+  }, [imgReady, maxLength, paletteMode, dotMm, cal]);
 
   // auto-(re)build the 3D model whenever the dither or thickness/border changes
   // (debounced; the heavy build runs off the input event so the Spin can show)
@@ -214,9 +245,13 @@ const ColorPositive: React.FC = () => {
         partsRef.current = parts;
         const group = new THREE.Group();
         parts.forEach((p) => {
-          const [r, g, b] = p.palette.rgb;
+          // 已校准时用实测原色着色，3D 预览同样贴近成品
+          const lin = cal.calibrated ? primaryLin(cal, p.palette.id) : null;
+          const [r, g, b] = lin
+            ? [lin2srgb(lin[0]), lin2srgb(lin[1]), lin2srgb(lin[2])]
+            : [p.palette.rgb[0] / 255, p.palette.rgb[1] / 255, p.palette.rgb[2] / 255];
           const mat = new THREE.MeshStandardMaterial({
-            color: new THREE.Color(r / 255, g / 255, b / 255),
+            color: new THREE.Color(r, g, b),
             roughness: 0.85,
             metalness: 0,
             side: THREE.DoubleSide,
@@ -378,6 +413,49 @@ const ColorPositive: React.FC = () => {
       <div className="colorpos-body">
         <div className="colorpos-panel">
           <List size="large" header="上传彩色照片，生成多色正片">
+            <List.Item key="calibration">
+              <div className="title">耗材校准</div>
+              <div className="describe">
+                每卷耗材打印出的实际颜色都偏离理想原色，校准后预览和成品才一致。
+                {cal.calibrated
+                  ? cal.label
+                    ? `当前使用预设「${cal.label}」。`
+                    : '当前已使用自定义校准。'
+                  : '当前未校准，按理想原色出图（偏色明显）——点下面预设可一键套用，或去打印校准片实测。'}
+              </div>
+              <div className="colorpos-switch">
+                {cal.calibrated ? (
+                  <Tag color="green">
+                    {cal.label
+                      ? `预设：${cal.label}`
+                      : `已校准（${cal.condition === 'reflective' ? '反射' : '背光'}）`}
+                  </Tag>
+                ) : (
+                  <Tag color="gray">未校准</Tag>
+                )}
+                <Button size="small" onClick={() => navigate('/color-positive/calibrate')}>
+                  {cal.calibrated ? '重新校准 / 查看' : '去校准耗材'}
+                </Button>
+              </div>
+              <div className="colorpos-cal-sub">
+                <RgbCalibrationPicker
+                  activeLabel={cal.label}
+                  saved={savedCals}
+                  onApply={applyCal}
+                />
+                <div
+                  className="colorpos-collapse-head colorpos-cal-collapse"
+                  onClick={() => setCalParamsOpen((o) => !o)}
+                >
+                  <span>查看当前耗材参数</span>
+                  <span className="colorpos-collapse-icon">
+                    {calParamsOpen ? '收起 ▲' : '展开 ▼'}
+                  </span>
+                </div>
+                {calParamsOpen ? <RgbCalibrationTable cal={cal} /> : null}
+              </div>
+            </List.Item>
+
             <List.Item key="upload">
               <div className="title">选择图像</div>
               <div className="describe">支持 jpg/png，全部在本地浏览器处理，不上传服务器。</div>

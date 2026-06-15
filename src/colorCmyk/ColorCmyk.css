@@ -1,3 +1,10 @@
+.colorcmyk,
+.colorcmyk *,
+.colorcmyk *::before,
+.colorcmyk *::after {
+  box-sizing: border-box;
+}
+
 .colorcmyk {
   display: flex;
   flex-direction: column;
@@ -109,6 +116,18 @@
 .colorcmyk-collapse-icon {
   font-size: 12px;
   color: var(--color-text-3, #999);
+}
+
+/* 耗材校准里的「分层」子区：快捷预设 + 参数折叠 */
+.colorcmyk-cal-sub {
+  margin-top: 10px;
+  padding-left: 10px;
+  border-left: 2px solid var(--color-border-2, #333);
+}
+.colorcmyk-cal-collapse {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 4px 0;
 }
 
 .colorcmyk-fullimg {

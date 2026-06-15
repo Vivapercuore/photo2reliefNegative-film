@@ -35,6 +35,8 @@ export interface CmykCalibration {
   calibrated: boolean;
   /** ISO timestamp of the last fit (for the UI) */
   updatedAt?: string;
+  /** human label when this came from a named preset (shown in the status tag) */
+  label?: string;
 }
 
 /** Layer height the calibration wedges are authored at (mm). */
@@ -82,6 +84,42 @@ export function defaultCalibration(): CmykCalibration {
   );
   return { alpha, white: [1, 1, 1], calibrated: false };
 }
+
+/** A named, ready-to-apply calibration the user can pick without re-shooting a
+ *  photo (e.g. a stock filament set we've already measured). */
+export interface CalibrationPreset {
+  id: string;
+  label: string;
+  cal: CmykCalibration;
+}
+
+/**
+ * Built-in calibration presets, selectable in the UI.
+ *
+ * 拓竹官方CMYK套装: measured from a backlit photo of the calibration print on
+ * 2026-06-15. α is the material property (exposure-independent — it's fitted
+ * from per-column transmission RATIOS), so `white` is set to the ideal full
+ * backlight [1,1,1] rather than that photo's exposure; the measured backlight
+ * was neutral (R≈G≈B), so nothing is lost.
+ */
+export const CALIBRATION_PRESETS: CalibrationPreset[] = [
+  {
+    id: 'bambu-official-cmyk',
+    label: '拓竹官方CMYK套装',
+    cal: {
+      alpha: [
+        [4.494, 3.523, 2.509], // C 青：最挡红、最透蓝
+        [1.557, 4.817, 3.816], // M 品红：最挡绿、最透红
+        [1.089, 1.683, 6.047], // Y 黄：最挡蓝、红绿双透
+        [1.188, 1.563, 2.198], // W 白：近中性半透扩散层
+      ],
+      white: [1, 1, 1],
+      calibrated: true,
+      label: '拓竹官方CMYK套装',
+      updatedAt: '2026-06-15',
+    },
+  },
+];
 
 /**
  * Forward model: per-channel transmission through a stack with the given
@@ -248,4 +286,70 @@ export function saveCalibration(cal: CmykCalibration): void {
 
 export function clearCalibration(): void {
   window.localStorage.removeItem(LS_KEY);
+}
+
+/** A user-saved, named calibration (typically from their own photo fit). Kept
+ *  in a local list so it can be re-selected later — never leaves the browser. */
+export interface SavedCalibration {
+  id: string;
+  label: string;
+  cal: CmykCalibration;
+}
+
+const SAVED_KEY = 'colorCmyk.calibration.saved';
+
+export function loadSavedCalibrations(): SavedCalibration[] {
+  try {
+    const raw = window.localStorage.getItem(SAVED_KEY);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) {
+        return arr.filter(
+          (s) =>
+            s &&
+            typeof s.id === 'string' &&
+            typeof s.label === 'string' &&
+            s.cal &&
+            Array.isArray(s.cal.alpha)
+        );
+      }
+    }
+  } catch {
+    /* ignore malformed storage */
+  }
+  return [];
+}
+
+function writeSaved(list: SavedCalibration[]): void {
+  window.localStorage.setItem(SAVED_KEY, JSON.stringify(list));
+}
+
+/** Append a named copy of `cal` (stamped with `label`) and return the entry. */
+export function addSavedCalibration(label: string, cal: CmykCalibration): SavedCalibration {
+  const entry: SavedCalibration = {
+    id: 'cal-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6),
+    label,
+    cal: { ...cal, label, calibrated: true },
+  };
+  const list = loadSavedCalibrations();
+  list.push(entry);
+  writeSaved(list);
+  return entry;
+}
+
+export function deleteSavedCalibration(id: string): void {
+  writeSaved(loadSavedCalibrations().filter((s) => s.id !== id));
+}
+
+/** Default name when the user doesn't type one: YYYYMMDD-N, N being the next
+ *  free index so same-day saves don't collide (e.g. 20260615-1, 20260615-2). */
+export function nextAutoName(): string {
+  const d = new Date();
+  const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(
+    d.getDate()
+  ).padStart(2, '0')}`;
+  const existing = new Set(loadSavedCalibrations().map((s) => s.label));
+  let n = 1;
+  while (existing.has(`${ymd}-${n}`)) n++;
+  return `${ymd}-${n}`;
 }

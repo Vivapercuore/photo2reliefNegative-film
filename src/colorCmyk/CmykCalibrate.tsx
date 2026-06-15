@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   List,
-  Upload,
+  Input,
   Button,
   Message,
   Tag,
@@ -15,16 +15,20 @@ import { buildCalibrationTile, CAL_ROWS } from './buildCalibrationTile';
 import {
   CAL_LAYERS,
   CAL_LAYER_MM,
-  CAL_FILAMENTS,
   WedgeSample,
   fitCalibration,
   saveCalibration,
   clearCalibration,
   loadCalibration,
-  transmit,
-  lin2srgb,
   CmykCalibration,
+  loadSavedCalibrations,
+  addSavedCalibration,
+  deleteSavedCalibration,
+  nextAutoName,
 } from './calibration';
+import CalibrationTable from './CalibrationTable';
+import CalibrationPicker from './CalibrationPicker';
+import PhotoDropZone from './PhotoDropZone';
 import './CmykCalibrate.css';
 
 function saveBlob(data: BlobPart, filename: string) {
@@ -38,9 +42,6 @@ function saveBlob(data: BlobPart, filename: string) {
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-
-const toHex = (rgb: [number, number, number]) =>
-  '#' + rgb.map((v) => Math.round(v).toString(16).padStart(2, '0').toUpperCase()).join('');
 
 const LAYER_MM = CAL_LAYER_MM;
 const CORNER_LABELS = ['左上', '右上', '右下', '左下'];
@@ -58,6 +59,9 @@ const CmykCalibrate: React.FC = () => {
   const [dispScale, setDispScale] = useState(1);
   const [fitted, setFitted] = useState<CmykCalibration | null>(null);
   const [current, setCurrent] = useState<CmykCalibration>(() => loadCalibration());
+  const [savedCals, setSavedCals] = useState(() => loadSavedCalibrations());
+  const [fitName, setFitName] = useState('');
+  const [editName, setEditName] = useState('');
 
   // ---- fullscreen white backlight (use the monitor as an even light source) --
   const [backlight, setBacklight] = useState(false);
@@ -290,28 +294,58 @@ const CmykCalibrate: React.FC = () => {
     Message.success('已拟合，确认后点保存');
   }, [corners, sampleBox]);
 
-  const onSave = useCallback(() => {
+  // ---- apply a calibration as the active one (preset / saved / fit) ----------
+  const applyCal = useCallback((c: CmykCalibration) => {
+    const copy: CmykCalibration = JSON.parse(JSON.stringify(c)); // own copy
+    saveCalibration(copy);
+    setCurrent(copy);
+    setFitted(null);
+    Message.success(copy.label ? `已应用：${copy.label}` : '已应用校准');
+  }, []);
+
+  // ---- live manual edit of the active calibration's α / white point ----------
+  const onEditCurrent = useCallback((next: CmykCalibration) => {
+    saveCalibration(next);
+    setCurrent(next);
+  }, []);
+
+  // ---- name + save a calibration to the local preset list --------------------
+  const saveAsPreset = useCallback(
+    (cal: CmykCalibration, rawName: string) => {
+      const name = rawName.trim() || nextAutoName();
+      const entry = addSavedCalibration(name, cal);
+      setSavedCals(loadSavedCalibrations());
+      applyCal(entry.cal);
+      Message.success(`已保存为预设：${name}`);
+      return name;
+    },
+    [applyCal]
+  );
+
+  const onSaveNamed = useCallback(() => {
     if (!fitted) return;
-    saveCalibration(fitted);
-    setCurrent(fitted);
-    Message.success('校准已保存，CMYK 模块将使用此校准');
-  }, [fitted]);
+    saveAsPreset(fitted, fitName);
+    setFitName('');
+  }, [fitted, fitName, saveAsPreset]);
+
+  const onSaveCurrentNamed = useCallback(() => {
+    saveAsPreset(current, editName);
+    setEditName('');
+  }, [current, editName, saveAsPreset]);
+
+  const onDeleteSaved = useCallback((id: string) => {
+    deleteSavedCalibration(id);
+    setSavedCals(loadSavedCalibrations());
+    Message.info('已删除该本地校准');
+  }, []);
 
   const onClear = useCallback(() => {
     clearCalibration();
     const d = loadCalibration();
     setCurrent(d);
     setFitted(null);
-    Message.info('已恢复默认估计');
+    Message.info('已恢复未校准默认值');
   }, []);
-
-  // preview swatch: a filament at mid thickness (mm) through the model
-  const swatch = (cal: CmykCalibration, f: number): string => {
-    const th = [0, 0, 0, 0];
-    th[f] = 0.8;
-    const lin = transmit(cal, th);
-    return toHex([255 * lin2srgb(lin[0]), 255 * lin2srgb(lin[1]), 255 * lin2srgb(lin[2])]);
-  };
 
   return (
     <div className="cmykcal">
@@ -323,28 +357,57 @@ const CmykCalibrate: React.FC = () => {
       </div>
 
       <div className="cmykcal-body">
-        <List size="large" header="测定耗材的颜色与透光系数">
+        <div className="cmykcal-grid">
+        <List className="cmykcal-col" size="large" header="当前校准 · 参数与预览">
           <List.Item key="status">
             <div className="title">当前校准</div>
             <div className="cmykcal-status">
               {current.calibrated ? (
-                <Tag color="green">已使用自定义校准{current.updatedAt ? `（${current.updatedAt.slice(0, 10)}）` : ''}</Tag>
+                <Tag color="green">
+                  {current.label
+                    ? `预设：${current.label}`
+                    : `已使用自定义校准${current.updatedAt ? `（${current.updatedAt.slice(0, 10)}）` : ''}`}
+                </Tag>
               ) : (
-                <Tag color="gray">默认估计（按调色板推算）</Tag>
+                <Tag color="gray">未校准（按调色板推算默认值）</Tag>
               )}
-              <Button size="mini" status="warning" onClick={onClear} style={{ marginLeft: 10 }}>
-                恢复默认
-              </Button>
             </div>
-            <div className="cmykcal-swatches">
-              {CAL_FILAMENTS.map((id, f) => (
-                <span key={id} className="cmykcal-sw">
-                  <i style={{ background: swatch(current, f) }} /> {id}
-                </span>
-              ))}
+            <div className="describe">
+              已有测好的耗材？<b>点下面的预设按钮即可一键套用</b>，无需重新拍照。也可以用右侧「校准流程」
+              拍照自测，或在下方手动微调参数。
+            </div>
+            <CalibrationPicker
+              activeLabel={current.label}
+              saved={savedCals}
+              onApply={applyCal}
+              onDelete={onDeleteSaved}
+            />
+            <CalibrationTable cal={current} showTable={false} />
+            <div className="cmykcal-editbox">
+              <div className="cmykcal-edit-title">手动微调参数</div>
+              <div className="cmykcal-warn">⚠ 手动修改会直接改变作画的颜色还原，请谨慎操作。</div>
+              <CalibrationTable cal={current} showSwatches={false} onChange={onEditCurrent} />
+              <div className="cmykcal-name-row">
+                <Input
+                  className="cmykcal-name-input"
+                  placeholder="预设名称（留空自动按日期编号）"
+                  value={editName}
+                  onChange={(v: string) => setEditName(v)}
+                  maxLength={24}
+                  onPressEnter={onSaveCurrentNamed}
+                />
+                <Button type="primary" onClick={onSaveCurrentNamed}>
+                  保存为预设
+                </Button>
+                <Button status="warning" onClick={onClear}>
+                  恢复默认
+                </Button>
+              </div>
             </div>
           </List.Item>
+        </List>
 
+        <List className="cmykcal-col" size="large" header="校准流程">
           <List.Item key="step1">
             <div className="title">① 分色打印校准片</div>
             <div className="describe">
@@ -406,10 +469,10 @@ const CmykCalibrate: React.FC = () => {
           </List.Item>
 
           <List.Item key="step2">
-            <div className="title">② 背光拍照并上传</div>
+            <div className="title">② 背光拍照并载入</div>
             <div className="describe">
               把拼好的整片平放在灯板/背光上，<b>四周留出一圈背光</b>（用作白参考）。建议关闭手机自动
-              白平衡、锁定曝光，正对拍一张上传。
+              白平衡、锁定曝光，正对拍一张，载入到这里。<b>照片只在本地浏览器读取处理，不会离开你的设备。</b>
             </div>
             <div className="describe">
               没有灯板？可让<b>显示器当背光</b>：把屏幕亮度调到最高，点下面按钮全屏铺白，
@@ -418,18 +481,7 @@ const CmykCalibrate: React.FC = () => {
             <Button onClick={openBacklight} style={{ marginBottom: 12 }}>
               打开全屏白色背光
             </Button>
-            <Upload
-              drag
-              accept="image/*"
-              limit={1}
-              autoUpload={false}
-              showUploadList
-              onChange={(list: any[]) => {
-                const f = list && list[list.length - 1];
-                if (f?.originFile) onPhoto(f.originFile);
-              }}
-              tip="仅支持图片"
-            />
+            <PhotoDropZone onFile={onPhoto} loaded={!!photoUrl} />
           </List.Item>
 
           {photoUrl ? (
@@ -453,44 +505,30 @@ const CmykCalibrate: React.FC = () => {
 
           {fitted ? (
             <List.Item key="step4">
-              <div className="title">④ 确认并保存</div>
-              <div className="describe">下方是拟合后各耗材在 0.8mm 厚度下的显色预测，与白参考对比看是否合理。</div>
-              <div className="cmykcal-swatches">
-                <span className="cmykcal-sw">
-                  <i style={{ background: toHex([255 * lin2srgb(fitted.white[0]), 255 * lin2srgb(fitted.white[1]), 255 * lin2srgb(fitted.white[2])]) }} /> 白参考
-                </span>
-                {CAL_FILAMENTS.map((id, f) => (
-                  <span key={id} className="cmykcal-sw">
-                    <i style={{ background: swatch(fitted, f) }} /> {id}
-                  </span>
-                ))}
+              <div className="title">④ 确认 · 命名保存到本地</div>
+              <div className="describe">
+                下方是拟合结果（各耗材 0.8mm 厚度下的显色预测与 α 系数），与白参考对比看是否合理。
+                给这组耗材起个名字保存到本地，之后可在「我保存的」里快捷点选。
               </div>
-              <table className="cmykcal-table">
-                <thead>
-                  <tr>
-                    <th>耗材</th>
-                    <th>αR</th>
-                    <th>αG</th>
-                    <th>αB</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {CAL_FILAMENTS.map((id, f) => (
-                    <tr key={id}>
-                      <td>{id}</td>
-                      {fitted.alpha[f].map((a, c) => (
-                        <td key={c}>{a.toFixed(2)}</td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <Button type="primary" onClick={onSave}>
-                保存校准
-              </Button>
+              <CalibrationTable cal={fitted} />
+              <div className="cmykcal-name-row">
+                <Input
+                  className="cmykcal-name-input"
+                  placeholder="预设名称（留空自动按日期编号）"
+                  value={fitName}
+                  onChange={(v: string) => setFitName(v)}
+                  maxLength={24}
+                  onPressEnter={onSaveNamed}
+                />
+                <Button type="primary" onClick={onSaveNamed}>
+                  保存为预设并应用
+                </Button>
+                <Button onClick={() => applyCal(fitted)}>仅应用不保存</Button>
+              </div>
             </List.Item>
           ) : null}
         </List>
+        </div>
       </div>
 
       {backlight ? (

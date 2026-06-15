@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom';
 import {
   List,
-  Upload,
   Button,
   InputNumber,
   Switch,
@@ -22,7 +21,15 @@ import { gridSizeFor } from '../colorPositive/dither';
 import { splitBoxSolids } from '../colorPositive/buildColorField';
 import { quantizeCmyk, cmykToRGBA, cmykStats, CmykField, CMYK_PALETTE } from './cmyk';
 import { buildCmykParts, CmykPart } from './buildCmykField';
-import { loadCalibration } from './calibration';
+import {
+  loadCalibration,
+  saveCalibration,
+  loadSavedCalibrations,
+  CmykCalibration,
+} from './calibration';
+import CalibrationTable from './CalibrationTable';
+import CalibrationPicker from './CalibrationPicker';
+import PhotoDropZone from './PhotoDropZone';
 import './ColorCmyk.css';
 
 interface Stats {
@@ -80,10 +87,22 @@ const ColorCmyk: React.FC = () => {
   // 耗材校准（颜色/透光系数），来自校准页，未校准时为按调色板推算的默认值。
   // 返回此页时重新读取，保证刚校准完即生效。
   const [cal, setCal] = useState(() => loadCalibration());
+  const [savedCals, setSavedCals] = useState(() => loadSavedCalibrations());
+  const [calParamsOpen, setCalParamsOpen] = useState(false);
   useEffect(() => {
-    const reload = () => setCal(loadCalibration());
+    const reload = () => {
+      setCal(loadCalibration());
+      setSavedCals(loadSavedCalibrations());
+    };
     window.addEventListener('focus', reload);
     return () => window.removeEventListener('focus', reload);
+  }, []);
+  // 快捷应用某套校准（官方预设或本地保存的），立即生效并刷新预览
+  const applyCal = useCallback((c: CmykCalibration) => {
+    const copy: CmykCalibration = JSON.parse(JSON.stringify(c));
+    saveCalibration(copy);
+    setCal(copy);
+    Message.success(copy.label ? `已应用：${copy.label}` : '已应用校准');
   }, []);
 
   // 3D
@@ -299,41 +318,54 @@ const ColorCmyk: React.FC = () => {
 
       <div className="colorcmyk-body">
         <div className="colorcmyk-panel">
-          <List size="large" header="上传彩色照片，生成 CMYK 透光彩画">
+          <List size="large" header="选择彩色照片，生成 CMYK 透光彩画">
             <List.Item key="calibration">
               <div className="title">耗材校准</div>
               <div className="describe">
                 每种耗材的颜色和透光系数不同，校准后预览和成品才一致。
                 {cal.calibrated
-                  ? '当前已使用自定义校准。'
-                  : '当前为按调色板推算的默认估计，建议打印校准片实测一次。'}
+                  ? cal.label
+                    ? `当前使用预设「${cal.label}」。`
+                    : '当前已使用自定义校准。'
+                  : '当前未校准，先用按调色板推算的默认值——点下面的预设可一键套用，或去打印校准片实测。'}
               </div>
               <div className="colorcmyk-switch">
                 {cal.calibrated ? (
-                  <Tag color="green">已校准</Tag>
+                  <Tag color="green">{cal.label ? `预设：${cal.label}` : '已校准'}</Tag>
                 ) : (
-                  <Tag color="gray">默认估计</Tag>
+                  <Tag color="gray">未校准</Tag>
                 )}
                 <Button size="small" onClick={() => navigate('/color-cmyk/calibrate')}>
                   {cal.calibrated ? '重新校准 / 查看' : '去校准耗材'}
                 </Button>
               </div>
+
+              {/* 分层：快捷预设，无需进入校准页即可一键切换耗材套装 */}
+              <div className="colorcmyk-cal-sub">
+                <CalibrationPicker
+                  activeLabel={cal.label}
+                  saved={savedCals}
+                  onApply={applyCal}
+                />
+                <div
+                  className="colorcmyk-collapse-head colorcmyk-cal-collapse"
+                  onClick={() => setCalParamsOpen((o) => !o)}
+                >
+                  <span>查看当前耗材参数</span>
+                  <span className="colorcmyk-collapse-icon">{calParamsOpen ? '收起 ▲' : '展开 ▼'}</span>
+                </div>
+                {calParamsOpen ? (
+                  <CalibrationTable cal={cal} />
+                ) : null}
+              </div>
             </List.Item>
 
             <List.Item key="upload">
               <div className="title">选择图像</div>
-              <div className="describe">支持 jpg/png，全部在本地浏览器处理，不上传服务器。</div>
-              <Upload
-                drag
-                accept="image/*"
-                limit={1}
-                autoUpload={false}
-                showUploadList
-                onChange={(list: any[]) => {
-                  const f = list && list[list.length - 1];
-                  if (f?.originFile) onFile(f.originFile);
-                }}
-                tip="仅支持图片"
+              <PhotoDropZone
+                onFile={onFile}
+                loaded={!!fileName}
+                hint="支持 jpg/png · 全部在本地处理，不会离开你的设备"
               />
             </List.Item>
 
@@ -560,7 +592,7 @@ const ColorCmyk: React.FC = () => {
               <ModelViewer object={viewObject} className="colorcmyk-3d" />
             ) : (
               <div className="colorcmyk-empty">
-                上传图片、设置参数后
+                选择图片、设置参数后
                 <br />
                 在此预览四色堆叠效果
               </div>
