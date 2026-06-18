@@ -7,7 +7,15 @@
  * dots mix into bright colors when light shines through, black blocks light.
  */
 
-import { RgbCalibration, primaryLin, projectToHull, lin2srgb } from './calibration';
+import {
+  RgbCalibration,
+  primaryLin,
+  projectToHull,
+  lin2srgb,
+  ynFactorOf,
+  ynForward,
+  ynInverse,
+} from './calibration';
 
 export interface PaletteColor {
   /** short id used in UI / as the per-color object name */
@@ -160,36 +168,20 @@ export function ditherToPalette(
     return 255 * (n <= 0.04045 ? n / 12.92 : Math.pow((n + 0.055) / 1.055, 2.4));
   };
   for (let i = 0; i < buf.length; i++) buf[i] = srgb2lin(buf[i]);
-  // Palette colours in linear 0..255: when calibrated, use each filament's
-  // REAL measured colour instead of the ideal primary — this is the core of the
-  // 偏色 fix (matching/diffusion now target reachable colours).
-  const pal = cal
-    ? palette.map((p) => primaryLin(cal, p.id).map((v) => 255 * v))
+  // Palette colours in linear 0..255. When CALIBRATED, use each filament's REAL
+  // measured colour instead of the ideal primary — the core of the 偏色 fix.
+  // (Uncalibrated keeps the ideal primaries, so behaviour is the legacy one
+  // apart from the always-on Yule-Nielsen mixing below.)
+  const calibrated = !!(cal && cal.calibrated);
+  const pal = calibrated
+    ? palette.map((p) => primaryLin(cal!, p.id).map((v) => 255 * v))
     : palette.map((p) => p.rgb.map(srgb2lin));
 
-  // Project each pixel into the palette's achievable gamut (the convex hull of
-  // the dot colors in linear light). Side-by-side dots DILUTE: a mix of
-  // fractions f_R+f_G+f_B+f_W+f_K=1 can only reach r+g+b−2·min(r,g,b) ≤ 1 —
-  // bright saturated secondaries (pure yellow needs r=g=1 simultaneously) are
-  // physically unreachable, and feeding them to error diffusion makes the
-  // residual grow without bound: channels pin at the clamp, ties collapse to
-  // the first palette entry (yellow → solid red), and the dragged error bleeds
-  // into neighbouring regions. Scaling the pixel onto the hull keeps hue and
-  // saturation, trades only brightness — and keeps the diffusion error bounded.
-  // (Only valid when the palette has K as the "empty" filler.)
-  if (cal) {
-    // The measured primaries form a smaller, real gamut. Project every pixel
-    // onto its convex hull (closest reachable colour) so out-of-gamut targets
-    // can't make the diffusion residual run away — generalises the K-only
-    // excess clamp below and, crucially, also covers RGBW (no K) which had no
-    // gamut handling at all.
-    for (let i = 0; i < buf.length; i += 3) {
-      const p = projectToHull([buf[i], buf[i + 1], buf[i + 2]], pal);
-      buf[i] = p[0];
-      buf[i + 1] = p[1];
-      buf[i + 2] = p[2];
-    }
-  } else if (palette.some((p) => p.id === 'K')) {
+  // (1) Uncalibrated cheap gamut clamp — bright saturated secondaries (e.g. pure
+  // yellow needs r=g=1) are unreachable side-by-side; scaling them onto the
+  // ideal hull keeps the diffusion error bounded. Done in LINEAR space, before
+  // the YN transform. (Calibrated uses the exact hull projection in step 3.)
+  if (!calibrated && palette.some((p) => p.id === 'K')) {
     for (let i = 0; i < buf.length; i += 3) {
       const m = Math.min(buf[i], buf[i + 1], buf[i + 2]);
       const excess = buf[i] + buf[i + 1] + buf[i + 2] - 2 * m;
@@ -199,6 +191,36 @@ export function ditherToPalette(
         buf[i + 1] *= s;
         buf[i + 2] *= s;
       }
+    }
+  }
+
+  // (2) Yule-Nielsen optical dot gain (DEFAULT-ON): adjacent dots read DARKER
+  // than the linear average because light spreads sideways between them. Working
+  // in YN space (channel^(1/n)) makes the spatial average THERE equal the
+  // perceived colour, so matching + error diffusion compensate for the darkening
+  // (more bright dots) and stay consistent with the simulated preview. n=1 (no
+  // calibration object at all) is a no-op = legacy linear mixing.
+  const yn = ynFactorOf(cal);
+  if (yn !== 1) {
+    const fwd = (v: number) => 255 * ynForward(v / 255, yn);
+    for (let i = 0; i < buf.length; i++) buf[i] = fwd(buf[i]);
+    for (const c of pal) {
+      c[0] = fwd(c[0]);
+      c[1] = fwd(c[1]);
+      c[2] = fwd(c[2]);
+    }
+  }
+
+  // (3) Calibrated: project every pixel onto the convex hull of the measured
+  // primaries (now in YN space) — the reachable perceived set. Keeps the
+  // diffusion residual bounded with the smaller real gamut and covers RGBW
+  // (no K), which the cheap clamp above can't handle.
+  if (calibrated) {
+    for (let i = 0; i < buf.length; i += 3) {
+      const p = projectToHull([buf[i], buf[i + 1], buf[i + 2]], pal);
+      buf[i] = p[0];
+      buf[i + 1] = p[1];
+      buf[i + 2] = p[2];
     }
   }
 
@@ -254,7 +276,7 @@ export function ditherToPalette(
 export function indicesToRGBA(res: DitherResult, cal?: RgbCalibration): Uint8ClampedArray {
   const { cols, rows, indices, palette } = res;
   const colors = palette.map((p) =>
-    cal ? primaryLin(cal, p.id).map((v) => 255 * lin2srgb(v)) : p.rgb
+    cal && cal.calibrated ? primaryLin(cal, p.id).map((v) => 255 * lin2srgb(v)) : p.rgb
   );
   const out = new Uint8ClampedArray(cols * rows * 4);
   for (let i = 0; i < indices.length; i++) {
@@ -282,14 +304,20 @@ export function simulateRGBA(
 ): { data: Uint8ClampedArray; width: number; height: number } {
   const { cols, rows, indices, palette } = res;
   // Average the REAL measured colours when calibrated, else the ideal primaries.
-  const palLin = cal
-    ? palette.map((p) => primaryLin(cal, p.id))
-    : palette.map((p) =>
-        p.rgb.map((v) => {
-          const n = v / 255;
-          return n <= 0.04045 ? n / 12.92 : Math.pow((n + 0.055) / 1.055, 2.4);
-        })
-      );
+  const palLin =
+    cal && cal.calibrated
+      ? palette.map((p) => primaryLin(cal, p.id))
+      : palette.map((p) =>
+          p.rgb.map((v) => {
+            const n = v / 255;
+            return n <= 0.04045 ? n / 12.92 : Math.pow((n + 0.055) / 1.055, 2.4);
+          })
+        );
+  // Average in Yule-Nielsen space (channel^(1/n)) so the blend matches the
+  // perceived optical dot gain — then invert back to linear before encoding.
+  // n=1 makes palY === palLin and the inverse an identity (old behaviour).
+  const yn = ynFactorOf(cal);
+  const palY = palLin.map((c) => [ynForward(c[0], yn), ynForward(c[1], yn), ynForward(c[2], yn)]);
   const enc = (n: number) =>
     255 * (n <= 0.0031308 ? 12.92 * n : 1.055 * Math.pow(n, 1 / 2.4) - 0.055);
 
@@ -305,7 +333,7 @@ export function simulateRGBA(
       let r = 0, g = 0, b = 0, n = 0;
       for (let y = y0; y < y1; y++) {
         for (let x = x0; x < x1; x++) {
-          const c = palLin[indices[y * cols + x]];
+          const c = palY[indices[y * cols + x]];
           r += c[0];
           g += c[1];
           b += c[2];
@@ -313,9 +341,9 @@ export function simulateRGBA(
         }
       }
       const o = (oy * W + ox) * 4;
-      out[o] = enc(r / n);
-      out[o + 1] = enc(g / n);
-      out[o + 2] = enc(b / n);
+      out[o] = enc(ynInverse(r / n, yn));
+      out[o + 1] = enc(ynInverse(g / n, yn));
+      out[o + 2] = enc(ynInverse(b / n, yn));
       out[o + 3] = 255;
     }
   }

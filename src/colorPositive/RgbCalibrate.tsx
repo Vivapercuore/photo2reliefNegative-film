@@ -26,6 +26,9 @@ import {
   nextAutoName,
   autoChromaGain,
   MAX_CHROMA_GAIN,
+  DEFAULT_YN,
+  MAX_YN,
+  ynFactorOf,
   PRIMARY_NOMINAL,
 } from './calibration';
 import RgbCalibrationTable from './RgbCalibrationTable';
@@ -267,6 +270,14 @@ const RgbCalibrate: React.FC = () => {
     [current, onEditCurrent]
   );
 
+  const setYn = useCallback(
+    (v: number | number[]) => {
+      const n = Array.isArray(v) ? v[0] : v;
+      onEditCurrent({ ...current, ynFactor: n, label: undefined });
+    },
+    [current, onEditCurrent]
+  );
+
   const saveAsPreset = useCallback(
     (cal: RgbCalibration, rawName: string) => {
       const name = rawName.trim() || nextAutoName();
@@ -366,6 +377,30 @@ const RgbCalibrate: React.FC = () => {
                     onClick={() => setChromaGain(autoChromaGain(current.primaries))}
                   >
                     自动
+                  </Button>
+                </div>
+              </div>
+              <div className="cmykcal-editbox">
+                <div className="cmykcal-edit-title">
+                  叠色补偿 Yule-Nielsen n = {ynFactorOf(current).toFixed(1)}（相邻点光学混色）
+                </div>
+                <div className="describe">
+                  并排的点会因光在层间侧向扩散而比线性平均<b>更暗</b>，此项按 Yule-Nielsen 半调模型
+                  补偿这一光学网点扩大——只影响混色区域、不动纯色。<b>1.0 = 线性平均（关闭）</b>，
+                  实测 FDM 推荐 2–3（默认 {DEFAULT_YN}）。
+                </div>
+                <div className="rgbcal-sat-row">
+                  <Slider
+                    style={{ flex: 1 }}
+                    min={1}
+                    max={MAX_YN}
+                    step={0.1}
+                    value={ynFactorOf(current)}
+                    onChange={setYn}
+                  />
+                  <span className="rgbcal-sat-val">{ynFactorOf(current).toFixed(1)}</span>
+                  <Button size="mini" onClick={() => setYn(DEFAULT_YN)}>
+                    默认
                   </Button>
                 </div>
               </div>

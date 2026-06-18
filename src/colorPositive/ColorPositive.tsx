@@ -187,8 +187,9 @@ const ColorPositive: React.FC = () => {
     cx.drawImage(img, 0, 0);
     const src = cx.getImageData(0, 0, img.width, img.height);
 
-    // 仅在已校准时把实测原色喂进抖动/预览；未校准保持原有理想原色路径不变
-    const activeCal = cal.calibrated ? cal : undefined;
+    // 始终把校准对象传下去：Yule-Nielsen 叠色补偿按推荐默认值生效（与是否实测原色
+    // 无关）；实测原色 + 色域投影仍只在已校准时启用（逻辑在 dither 内按 calibrated 判断）。
+    const activeCal = cal;
     const res = ditherToPalette(src, grid.cols, grid.rows, grid.dotMm, palette, activeCal);
     ditherResultRef.current = res;
 

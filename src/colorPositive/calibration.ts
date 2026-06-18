@@ -81,6 +81,12 @@ export interface RgbCalibration {
    *  shrink the gamut, while the measured 偏色 (hue cast) is kept. Defaults to
    *  the auto value from the fit; absent/1 = no restoration. */
   chromaGain?: number;
+  /** Yule-Nielsen factor n (≥1) for the side-by-side dot mixing. n=1 is plain
+   *  linear-light averaging (Murray–Davies); n>1 models optical dot gain — light
+   *  spreading sideways between adjacent dots makes a halftone read DARKER than
+   *  the linear average. Per Prusa's measured FDM data, Yule-Nielsen (~n=3) is
+   *  about twice as accurate as linear averaging. Absent/1 = off. */
+  ynFactor?: number;
   /** ISO timestamp of the last fit (for the UI) */
   updatedAt?: string;
   /** human label when this came from a named preset (shown in the status tag) */
@@ -101,7 +107,10 @@ export function defaultCalibration(condition: ViewCondition = 'reflective'): Rgb
     const [r, g, b] = PRIMARY_NOMINAL[id];
     primaries[id] = [srgb2lin(r / 255), srgb2lin(g / 255), srgb2lin(b / 255)];
   }
-  return { primaries, white: [1, 1, 1], condition, calibrated: false, chromaGain: 1 };
+  // ynFactor defaults to the recommended value so the optical dot-gain
+  // compensation is ON out of the box (it's independent of primary measurement);
+  // chromaGain stays 1 (no saturation restore until a real photo is fit).
+  return { primaries, white: [1, 1, 1], condition, calibrated: false, chromaGain: 1, ynFactor: DEFAULT_YN };
 }
 
 /** Largest allowed saturation-restoration factor (so a very flat photo can't
@@ -162,6 +171,31 @@ export function autoChromaGain(primaries: Record<string, [number, number, number
   }
   if (measSum < 1e-6) return 1;
   return Math.max(1, Math.min(MAX_CHROMA_GAIN, idealSum / measSum));
+}
+
+/** Default Yule-Nielsen factor for a calibrated set (Prusa's measured value). */
+export const DEFAULT_YN = 3;
+/** Largest allowed Yule-Nielsen factor (UI slider upper bound). */
+export const MAX_YN = 6;
+
+/** The Yule-Nielsen factor in effect: 1 (off) for an uncalibrated/absent cal,
+ *  else the stored value (falling back to DEFAULT_YN for older saved cals). */
+export function ynFactorOf(cal?: RgbCalibration): number {
+  if (!cal) return 1;
+  if (cal.ynFactor == null) return DEFAULT_YN; // pre-YN saved cal
+  return cal.ynFactor >= 1 ? cal.ynFactor : 1;
+}
+
+/** Forward Yule-Nielsen transform of one linear-light channel (0..1): R → R^(1/n).
+ *  Halftone averaging is linear in THIS space; the perceived colour is the
+ *  inverse of the spatial average. n=1 is identity. */
+export function ynForward(lin01: number, n: number): number {
+  return n === 1 ? lin01 : Math.pow(clamp01(lin01), 1 / n);
+}
+
+/** Inverse Yule-Nielsen transform (0..1): x → x^n, back to linear light. */
+export function ynInverse(x: number, n: number): number {
+  return n === 1 ? x : Math.pow(x < 0 ? 0 : x > 1 ? 1 : x, n);
 }
 
 /**
@@ -279,6 +313,7 @@ export function fitCalibration(samples: SwatchSample[], condition: ViewCondition
     condition,
     calibrated: true,
     chromaGain: autoChromaGain(primaries),
+    ynFactor: DEFAULT_YN,
     updatedAt: new Date().toISOString(),
   };
 }
