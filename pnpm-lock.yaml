@@ -33,8 +33,8 @@ importers:
         specifier: ^16.18.101
         version: 16.18.126
       bambu-3mf:
-        specifier: file:../bambu-3mf
-        version: file:../bambu-3mf(three@0.160.1)
+        specifier: ^0.1.0
+        version: 0.1.0(three@0.160.1)
       fflate:
         specifier: ^0.8.3
         version: 0.8.3
@@ -1830,8 +1830,8 @@ packages:
   balanced-match@1.0.2:
     resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
 
-  bambu-3mf@file:../bambu-3mf:
-    resolution: {directory: ../bambu-3mf, type: directory}
+  bambu-3mf@0.1.0:
+    resolution: {integrity: sha512-YDwjWPUEomfubmHWaT0lPIBHg7NEfMTCJJWdhCWo7z6A23BagvmZ2djKy381t3uFEF6WvdxsyFz4mVHl3lIxgQ==}
     engines: {node: '>=16'}
     peerDependencies:
       three: '>=0.150.0'
@@ -8105,7 +8105,7 @@ snapshots:
 
   balanced-match@1.0.2: {}
 
-  bambu-3mf@file:../bambu-3mf(three@0.160.1):
+  bambu-3mf@0.1.0(three@0.160.1):
     dependencies:
       fflate: 0.8.3
     optionalDependencies:
