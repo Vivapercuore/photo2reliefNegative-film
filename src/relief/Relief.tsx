@@ -20,7 +20,7 @@ import { Config } from '../dataProcess/type';
 import { PhotoSizeMap } from '../constants';
 import { useDocumentTitle } from '../useDocumentTitle';
 import ModelViewer from '../laser/viewer/ModelViewer';
-import { pack3mf, BambuTemplate, Pack3mfOptions } from '../export/bambu/build3mf';
+import { pack3mf, BambuTemplate, Pack3mfOptions } from 'bambu-3mf';
 import type { ReliefRequest, ReliefResponse } from './worker/relief.worker';
 
 const RadioGroup = Radio.Group;

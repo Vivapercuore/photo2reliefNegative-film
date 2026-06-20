@@ -22,7 +22,7 @@ import { decodeLacImages } from './lac/decodeImages';
 import { buildModel, disposeBuild, BuildResult, BuildOptions, engraveColorAt } from './lac/buildMesh';
 import ModelViewer from './viewer/ModelViewer';
 import PathPreview from './viewer/PathPreview';
-import { pack3mf } from '../export/bambu/build3mf';
+import { pack3mf } from 'bambu-3mf';
 import { useDocumentTitle } from '../useDocumentTitle';
 
 const Option = Select.Option;
