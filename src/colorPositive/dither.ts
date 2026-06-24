@@ -107,30 +107,48 @@ export function gridSizeFor(
   return { cols, rows, dotMm, widthMm: cols * dotMm, heightMm: rows * dotMm };
 }
 
-/** Area-average resample of an RGBA image to cols×rows float RGB (shared with the CMYK module). */
+/** Area-WEIGHTED resample of an RGBA image to cols×rows float RGB (shared with
+ *  the CMYK module). Each source pixel is weighted by its fractional overlap
+ *  with the output cell, so every cell covers the same source extent. Integer
+ *  pixel boundaries (a varying 2-vs-3-px box) alias a smooth gradient into
+ *  cell-to-cell noise that the coarse layer quantization amplifies into speckle. */
 export function downsampleRGB(src: RGBAImage, cols: number, rows: number): Float32Array {
   const { width: W, height: H, data } = src;
   const out = new Float32Array(cols * rows * 3);
   for (let ry = 0; ry < rows; ry++) {
-    const y0 = Math.floor((ry * H) / rows);
-    const y1 = Math.max(y0 + 1, Math.floor(((ry + 1) * H) / rows));
+    const fy0 = (ry * H) / rows;
+    const fy1 = ((ry + 1) * H) / rows;
+    const iy0 = Math.floor(fy0);
+    const iy1 = Math.min(H - 1, Math.ceil(fy1) - 1);
     for (let rx = 0; rx < cols; rx++) {
-      const x0 = Math.floor((rx * W) / cols);
-      const x1 = Math.max(x0 + 1, Math.floor(((rx + 1) * W) / cols));
-      let r = 0, g = 0, b = 0, n = 0;
-      for (let y = y0; y < y1; y++) {
-        for (let x = x0; x < x1; x++) {
+      const fx0 = (rx * W) / cols;
+      const fx1 = ((rx + 1) * W) / cols;
+      const ix0 = Math.floor(fx0);
+      const ix1 = Math.min(W - 1, Math.ceil(fx1) - 1);
+      let r = 0,
+        g = 0,
+        b = 0,
+        wsum = 0;
+      for (let y = iy0; y <= iy1; y++) {
+        const wy = Math.min(y + 1, fy1) - Math.max(y, fy0);
+        if (wy <= 0) continue;
+        for (let x = ix0; x <= ix1; x++) {
+          const wx = Math.min(x + 1, fx1) - Math.max(x, fx0);
+          if (wx <= 0) continue;
+          const w = wx * wy;
           const i = (y * W + x) * 4;
-          r += data[i];
-          g += data[i + 1];
-          b += data[i + 2];
-          n++;
+          r += data[i] * w;
+          g += data[i + 1] * w;
+          b += data[i + 2] * w;
+          wsum += w;
         }
       }
       const o = (ry * cols + rx) * 3;
-      out[o] = r / n;
-      out[o + 1] = g / n;
-      out[o + 2] = b / n;
+      if (wsum > 0) {
+        out[o] = r / wsum;
+        out[o + 1] = g / wsum;
+        out[o + 2] = b / wsum;
+      }
     }
   }
   return out;

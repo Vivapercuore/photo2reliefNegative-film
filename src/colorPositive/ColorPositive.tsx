@@ -32,6 +32,9 @@ import {
   DitherResult,
 } from './dither';
 import { buildColorField, partSolids, ColorPart } from './buildColorField';
+import CropEditor from '../imageEdit/CropEditor';
+import ColorEditor from '../imageEdit/ColorEditor';
+import { renderEdited, NO_CROP, defaultColorAdjust, CropRect, ColorAdjust } from '../imageEdit/imageEdit';
 import {
   loadCalibration,
   saveCalibration,
@@ -104,6 +107,10 @@ const ColorPositive: React.FC = () => {
   const [fileName, setFileName] = useState('');
   const imgRef = useRef<HTMLImageElement | null>(null);
   const [imgReady, setImgReady] = useState(0);
+  const [natSize, setNatSize] = useState({ w: 0, h: 0 });
+  // 编辑：裁剪（归一化）与色彩调整（RGB 原色），作为抖动/分色的输入
+  const [crop, setCrop] = useState<CropRect>(NO_CROP);
+  const [color, setColor] = useState<ColorAdjust>(() => defaultColorAdjust(['R', 'G', 'B']));
   const [previewOpen, setPreviewOpen] = useState(true);
   const [stats, setStats] = useState<Stats | null>(null);
   const ditherResultRef = useRef<DitherResult | null>(null);
@@ -158,6 +165,8 @@ const ColorPositive: React.FC = () => {
 
   const onFile = useCallback((file: File) => {
     setFileName(file.name);
+    setCrop(NO_CROP); // 新图重置裁剪与色彩
+    setColor(defaultColorAdjust(['R', 'G', 'B']));
     const reader = new FileReader();
     reader.onload = (e) => {
       const url = e.target?.result as string;
@@ -165,6 +174,7 @@ const ColorPositive: React.FC = () => {
       const img = new Image();
       img.onload = () => {
         imgRef.current = img;
+        setNatSize({ w: img.naturalWidth, h: img.naturalHeight });
         setImgReady((n) => n + 1);
       };
       img.onerror = () => Message.error('图片加载失败');
@@ -176,16 +186,20 @@ const ColorPositive: React.FC = () => {
   // (re)dither whenever image or physical params change
   useEffect(() => {
     const img = imgRef.current;
-    if (!img || !img.width) return;
-    const grid = gridSizeFor(img.width, img.height, maxLength, dotMm);
+    if (!img || !img.naturalWidth) return;
+    const natW = img.naturalWidth;
+    const natH = img.naturalHeight;
+    // 裁剪后的有效尺寸决定点阵长宽比
+    const effW = Math.max(1, Math.round(crop.w * natW));
+    const effH = Math.max(1, Math.round(crop.h * natH));
+    const grid = gridSizeFor(effW, effH, maxLength, dotMm);
 
-    const c = document.createElement('canvas');
-    c.width = img.width;
-    c.height = img.height;
-    const cx = c.getContext('2d');
-    if (!cx) return;
-    cx.drawImage(img, 0, 0);
-    const src = cx.getImageData(0, 0, img.width, img.height);
+    // 编辑后的画布（裁剪 + 色彩），长边略高于点阵即可，省内存/耗时
+    const cap = Math.min(4096, Math.max(512, 2 * Math.max(grid.cols, grid.rows)));
+    const edited = renderEdited(img, natW, natH, crop, color, ['R', 'G', 'B'], cap);
+    const ecx = edited.getContext('2d');
+    if (!ecx) return;
+    const src = ecx.getImageData(0, 0, edited.width, edited.height);
 
     // 始终把校准对象传下去：Yule-Nielsen 叠色补偿按推荐默认值生效（与是否实测原色
     // 无关）；实测原色 + 色域投影仍只在已校准时启用（逻辑在 dither 内按 calibrated 判断）。
@@ -225,7 +239,7 @@ const ColorPositive: React.FC = () => {
     setDitherVersion((v) => v + 1);
     // palette 由 paletteMode 派生（paletteMode 已在依赖内）；依赖刻意精简，无需重复列入
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [imgReady, maxLength, paletteMode, dotMm, cal]);
+  }, [imgReady, maxLength, paletteMode, dotMm, cal, crop, color]);
 
   // auto-(re)build the 3D model whenever the dither or thickness/border changes
   // (debounced; the heavy build runs off the input event so the Spin can show)
@@ -490,12 +504,33 @@ const ColorPositive: React.FC = () => {
                   </div>
                   {previewOpen ? (
                     <>
-                      <ZoomableImage src={imageUrl} alt="原图" className="colorpos-fullimg" />
-                      <div className="colorpos-cap">原图</div>
+                      <div className="colorpos-cap" style={{ marginTop: 0 }}>
+                        裁剪（直接作用于原图）：拖动选框移动、八向手柄改尺寸、上方选比例或输入尺寸
+                      </div>
+                      {imageUrl && natSize.w ? (
+                        <CropEditor
+                          src={imageUrl}
+                          naturalWidth={natSize.w}
+                          naturalHeight={natSize.h}
+                          value={crop}
+                          onChange={setCrop}
+                          longEdgeMm={maxLength}
+                          onLongEdgeChange={(mm) => setMaxLength(Math.min(500, Math.max(10, Math.round(mm))))}
+                        />
+                      ) : (
+                        <ZoomableImage src={imageUrl} alt="原图" className="colorpos-fullimg" />
+                      )}
+
+                      <div className="colorpos-cap" style={{ marginTop: 14 }}>
+                        色彩调整：整体曝光 / 对比 / 色调，按 红·绿·蓝 分别调饱和度与亮度
+                      </div>
+                      <ColorEditor value={color} onChange={setColor} primaries={RGBKW_PALETTE.slice(0, 3)} />
+
                       {ditherUrl ? (
                         <>
                           {/* 缩略显示用线性光正确缩放的小图（浏览器按 sRGB 缩放
                               点阵会发暗发脏且有摩尔纹）；点开放大看原始点阵 */}
+                          <div className="colorpos-cap" style={{ marginTop: 14 }}>预览图（编辑后效果）</div>
                           <ZoomableImage
                             src={simUrl || ditherUrl}
                             alt="预览图"
@@ -503,7 +538,6 @@ const ColorPositive: React.FC = () => {
                             zoomPixelated
                             className="colorpos-fullimg colorpos-dither"
                           />
-                          <div className="colorpos-cap">预览图</div>
                         </>
                       ) : null}
                     </>

@@ -32,17 +32,16 @@ export interface CmykBuildOptions {
   /** uniform base slab in LAYERS, printed in Y (the lightest ink) — keeps
    *  pure-white cells (all channels 0) from becoming through-holes */
   baseLayers: number;
-  /** uniform white cap in LAYERS on TOP of every column (viewing-side diffuser,
-   *  conformal — follows each column's height) */
-  topLayers: number;
   addBorder: boolean;
   /** border width (mm), printed in K at the tallest column height */
   borderWidth: number;
 }
 
-/** Stack order bottom→top as indices into channels[C,M,Y,W]: W, Y, M, C
- *  (white diffuser/luminance against the backlight, colours on top). */
-const STACK_ORDER = [3, 2, 1, 0];
+/** Stack order bottom→top as indices into channels[C,M,Y,W]: Y, M, C, W —
+ *  colours sit on the white floor, and the solved per-pixel WHITE goes on TOP
+ *  (viewing side) so it masks the colour layers' surface cast over neutral/dark
+ *  areas. The white floor (against the backlight) is added separately below. */
+const STACK_ORDER = [2, 1, 0, 3];
 
 interface LevelRect {
   c: number;
@@ -100,7 +99,7 @@ function greedyLevelRects(
 /** Build the four per-channel solids (only non-empty channels are returned). */
 export function buildCmykParts(field: CmykField, opts: CmykBuildOptions): CmykPart[] {
   const { cols, rows, dotMm, channels } = field;
-  const { layerMm, baseLayers, topLayers, addBorder, borderWidth } = opts;
+  const { layerMm, baseLayers, addBorder, borderWidth } = opts;
   const W = cols * dotMm;
   const D = rows * dotMm;
   const bw = addBorder ? borderWidth : 0;
@@ -129,27 +128,7 @@ export function buildCmykParts(field: CmykField, opts: CmykBuildOptions): CmykPa
     }
   }
 
-  // conformal white cap on TOP of every column (viewing-side diffuser): each
-  // cell gets `topLayers` white from its current top upward — greedy-merged by
-  // shared (bottom, thickness). White is filament index 3.
-  if (topLayers > 0) {
-    const topLv = new Uint8Array(cols * rows).fill(topLayers);
-    for (const { c, r, w, h, bot, lv: t } of greedyLevelRects(bottom, topLv, cols, rows)) {
-      pushBox(
-        buffers[3],
-        c * dotMm,
-        (c + w) * dotMm,
-        bot * layerMm,
-        (bot + t) * layerMm,
-        r * dotMm,
-        (r + h) * dotMm
-      );
-    }
-    for (let i = 0; i < bottom.length; i++) {
-      bottom[i] += topLayers;
-      if (bottom[i] > maxTop) maxTop = bottom[i];
-    }
-  }
+  // (the per-pixel top white is the W channel, stacked last by STACK_ORDER above)
 
   // white diffuser floor: full footprint 0..base — evens the backlight and
   // keeps pure-white cells solid (no holes). White is filament index 3.

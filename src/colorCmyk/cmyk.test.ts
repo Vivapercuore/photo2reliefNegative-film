@@ -84,7 +84,11 @@ describe('quantizeCmyk — calibration-derived caps + per-pixel box-constrained 
     const thinTotalMm = (BASE + maxStack(thin)) * LAYER_MM;
 
     expect(thinTotalMm).toBeLessThan(naturalTotalMm);
-    expect(thinTotalMm).toBeLessThanOrEqual(1.0 + LAYER_MM); // within one layer of target
+    // targetTotalMm is approximate under the colour-matching quantizer: the
+    // tallest column tracks the target but can sit a layer or two above it,
+    // because Pass 2 picks the nearest printable COLOUR (a neutral black is
+    // densest when its C/M/Y are balanced) rather than the exact scaled thickness.
+    expect(thinTotalMm).toBeLessThanOrEqual(1.0 + 3 * LAYER_MM);
     expect(thinTotalMm).toBeGreaterThan(0);
   });
 
@@ -106,5 +110,21 @@ describe('quantizeCmyk — calibration-derived caps + per-pixel box-constrained 
     expect(c).toBeGreaterThan(0);
     expect(m).toBeGreaterThan(0);
     expect(y).toBeGreaterThan(0);
+  });
+
+  it('lays a uniform topLayers white cap on every cell, regardless of colour', () => {
+    // The top white is a uniform cap so the viewing surface is always white. Every
+    // cell, whatever its colour, carries exactly topLayers in channel W.
+    const o = { cal, layerMm: LAYER_MM, baseLayers: 2, topLayers: 6 };
+    const colors: [number, number, number][] = [
+      [0, 0, 0],
+      [255, 255, 0],
+      [0, 174, 239],
+      [255, 255, 255],
+    ];
+    for (const rgb of colors) {
+      const f = quantizeCmyk(solidImage(2, 2, rgb), 2, 2, 0.6, o);
+      for (let i = 0; i < f.channels[3].length; i++) expect(f.channels[3][i]).toBe(6);
+    }
   });
 });

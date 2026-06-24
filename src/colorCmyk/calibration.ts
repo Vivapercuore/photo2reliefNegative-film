@@ -31,6 +31,21 @@ export function relLum(r: number, g: number, b: number): number {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
+/** CIELAB (D65) of a LINEAR-light RGB triple (0..1). Used by the CMYK quantizer
+ *  to measure how far apart two printable colours are PERCEPTUALLY (so it can
+ *  protect hue while trading off lightness). Takes linear RGB directly — the
+ *  transmission model already outputs linear light, no sRGB round-trip needed. */
+export function linRgbToLab(r: number, g: number, b: number): [number, number, number] {
+  const X = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047;
+  const Y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const Z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883;
+  const f = (t: number) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+  const fx = f(X);
+  const fy = f(Y);
+  const fz = f(Z);
+  return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+}
+
 export interface CmykCalibration {
   /** absorption coefficient (1/mm), filament [C,M,Y,K] × channel [R,G,B] */
   alpha: number[][];
@@ -99,15 +114,56 @@ export interface CalibrationPreset {
 }
 
 /**
- * Built-in calibration presets, selectable in the UI.
+ * Built-in calibration presets, selectable in the UI. All are fits of the same
+ * Bambu CMYK set from backlit photos of its calibration prints, kept as profiles
+ * for comparison. α is the material property (exposure-independent — fitted from
+ * per-column transmission RATIOS), so `white` is the ideal full backlight
+ * [1,1,1] rather than the photo's exposure (the backlight was neutral, R≈G≈B).
  *
- * 拓竹官方CMYK套装: measured from a backlit photo of the calibration print on
- * 2026-06-15. α is the material property (exposure-independent — it's fitted
- * from per-column transmission RATIOS), so `white` is set to the ideal full
- * backlight [1,1,1] rather than that photo's exposure; the measured backlight
- * was neutral (R≈G≈B), so nothing is lost.
+ * 拓竹CMYK3: refined from a backlit photo of the CMYK2 wheel print (2026-06-17).
+ *   That print came out darker/muddier than the source — esp. the cool side
+ *   (cyan/green/blue) and yellow — which means the real absorption is HIGHER than
+ *   CMYK2 measured (print darker than target ⇒ solver used too much ink). So the
+ *   main (diagonal) absorptions are nudged UP (solver uses less ink → brighter,
+ *   slightly less saturated print) and the worst cross-absorptions (C·G, M·B)
+ *   trimmed (cleaner cyan/blue); the white's blue absorption is dropped to undo
+ *   the warm/dim cast. The warm hues (red/magenta) were close, so they move least.
+ * 拓竹CMYK2: the clean wedge re-fit (2026-06-17) — basis for CMYK3.
+ * 拓竹官方CMYK套装: the earlier fit (2026-06-15) — colours come out paler.
  */
 export const CALIBRATION_PRESETS: CalibrationPreset[] = [
+  {
+    id: 'bambu-cmyk-3',
+    label: '拓竹CMYK3',
+    cal: {
+      alpha: [
+        [6.8, 1.9, 0.852], // C 青：挡红更狠(↑少用青)、降绿吸收(更亮的青/绿)
+        [0.444, 8.6, 2.1], // M 品红：挡绿更狠(↑少用品红→蓝更亮)、降挡蓝(蓝更亮)
+        [0.417, 0.64, 11.6], // Y 黄：挡蓝更狠(↑少用黄→黄更亮更净)
+        [0.57, 0.74, 0.92], // W 白：降蓝吸收去暖、整体提亮中性
+      ],
+      white: [1, 1, 1],
+      calibrated: true,
+      label: '拓竹CMYK3',
+      updatedAt: '2026-06-17',
+    },
+  },
+  {
+    id: 'bambu-cmyk-2',
+    label: '拓竹CMYK2',
+    cal: {
+      alpha: [
+        [6.088, 2.092, 0.852], // C 青：强挡红、少挡绿、近透蓝
+        [0.444, 7.819, 2.311], // M 品红：强挡绿、透红、半挡蓝
+        [0.417, 0.665, 10.582], // Y 黄：强挡蓝、红绿双透
+        [0.582, 0.772, 1.076], // W 白：弱吸收半透扩散层（偏暖）
+      ],
+      white: [1, 1, 1],
+      calibrated: true,
+      label: '拓竹CMYK2',
+      updatedAt: '2026-06-17',
+    },
+  },
   {
     id: 'bambu-official-cmyk',
     label: '拓竹官方CMYK套装',
@@ -170,39 +226,42 @@ export function transmit(cal: CmykCalibration, thicknessMm: number[]): [number, 
  * per-filament thicknesses (mm) in order [C, M, Y, W], each clamped to its
  * `capMm` ceiling, as the closest PRINTABLE point — no global post-scaling.
  *
- * Joint 4-channel box-constrained least squares (NNLS by coordinate descent).
- * Crucially we DON'T force white to carry the neutral/luminance part: a single
- * translucent ink (or the white diffuser) can't actually block light to black —
- * only a balanced C+M+Y stack absorbs every band, so neutral darks come out as
- * a three-colour mix (true, untinted black). White is the weakest absorber, so
- * the ridge (min-norm tie-break) keeps it OUT of the heavy darkening and only
- * lets it supplement where C/M/Y hit their caps (the "not black enough" fill).
- *   d_c = −ln(target_c / white_c);  minimize Σ_c (Σ_f α[f][c]·t_f − d_c)²
- *   subject to 0 ≤ t_f ≤ capMm[f].
- * The 4×4 Gram matrix is built once (A is the same for every pixel).
+ * C/M/Y do the colour AND the bulk of the neutral darkening (a three-ink stack
+ * blocks every band → a true, deep, untinted black). A reserved bit of WHITE is
+ * placed ON TOP (see buildCmykParts stack order): up to `whiteTopMm`, taken from
+ * the neutral so it never over-absorbs any channel. Because that white is the
+ * viewing-side surface over dark/neutral areas, it MASKS the cyan that would
+ * otherwise reflect/transmit there; and being content-adaptive (≈0 for
+ * saturated/bright pixels, more for neutral/dark) it doesn't thicken the whole
+ * model. Per pixel:
+ *   d_c = −ln(target_c / white_c);  t_W = min( min_c d_c/α_W[c], whiteTopMm );
+ *   residual d_c − α_W[c]·t_W → C/M/Y by box-constrained NNLS, so C/M/Y + white
+ *   reconstruct the target (the model stays neutral; masking is a print-surface
+ *   effect not captured in the on-screen preview).
  */
 export function makeLithophaneSolver(
   cal: CmykCalibration,
   ridge = 2e-3,
-  capMm?: [number, number, number, number]
+  capMm?: [number, number, number, number],
+  whiteTopMm = 0.4
 ): (targetLin: number[]) => number[] {
-  const cap = capMm ?? [Infinity, Infinity, Infinity, Infinity];
-  // 3×4 A: A[c][f] = α[f][c], f ∈ {C,M,Y,W}
+  const aw = cal.alpha[3]; // white absorption per channel (may be non-neutral)
+  const capW = capMm ? capMm[3] : Infinity;
+  const capC = capMm ? [capMm[0], capMm[1], capMm[2]] : [Infinity, Infinity, Infinity];
+  const wTop = Math.min(whiteTopMm < 0 ? 0 : whiteTopMm, capW);
+  // 3×3 A for CMY: A[c][f] = α[f][c], f ∈ {C,M,Y}
   const A: number[][] = [[], [], []];
-  for (let c = 0; c < 3; c++) for (let f = 0; f < 4; f++) A[c][f] = cal.alpha[f][c];
-  // 4×4 Gram + ridge. A touch more ridge on white (f=3) nudges the solver to
-  // reach for the strong C/M/Y inks first, so blacks stay neutral.
+  for (let c = 0; c < 3; c++) for (let f = 0; f < 3; f++) A[c][f] = cal.alpha[f][c];
   const G: number[][] = [
-    [0, 0, 0, 0],
-    [0, 0, 0, 0],
-    [0, 0, 0, 0],
-    [0, 0, 0, 0],
+    [0, 0, 0],
+    [0, 0, 0],
+    [0, 0, 0],
   ];
-  for (let f = 0; f < 4; f++)
-    for (let h = 0; h < 4; h++) {
+  for (let f = 0; f < 3; f++)
+    for (let h = 0; h < 3; h++) {
       let s = 0;
       for (let c = 0; c < 3; c++) s += A[c][f] * A[c][h];
-      G[f][h] = s + (f === h ? (f === 3 ? ridge * 8 : ridge) : 0);
+      G[f][h] = s + (f === h ? ridge : 0);
     }
   return (targetLin: number[]): number[] => {
     const d = [0, 0, 0];
@@ -210,20 +269,31 @@ export function makeLithophaneSolver(
       const ratio = Math.min(1, Math.max(1e-4, targetLin[c] / cal.white[c]));
       d[c] = -Math.log(ratio);
     }
-    const b = [0, 0, 0, 0];
-    for (let f = 0; f < 4; f++) {
+    // top-white reserve: the most white that doesn't over-absorb any channel,
+    // capped at whiteTopMm → content-adaptive (≈0 when a channel is bright)
+    let mr = Infinity;
+    for (let c = 0; c < 3; c++) {
+      const r = aw[c] > 1e-6 ? d[c] / aw[c] : Infinity;
+      if (r < mr) mr = r;
+    }
+    const tW = mr < 0 ? 0 : mr > wTop ? wTop : mr;
+    // residual after white → C/M/Y (the bulk of the black + all chroma)
+    const dr = [0, 0, 0];
+    for (let c = 0; c < 3; c++) dr[c] = Math.max(0, d[c] - aw[c] * tW);
+    const Atd = [0, 0, 0];
+    for (let f = 0; f < 3; f++) {
       let s = 0;
-      for (let c = 0; c < 3; c++) s += A[c][f] * d[c];
-      b[f] = s;
+      for (let c = 0; c < 3; c++) s += A[c][f] * dr[c];
+      Atd[f] = s;
     }
     const t = [0, 0, 0, 0];
-    for (let it = 0; it < 30; it++) {
-      for (let f = 0; f < 4; f++) {
-        let s = b[f];
-        for (let h = 0; h < 4; h++) if (h !== f) s -= G[f][h] * t[h];
-        // project onto the box [0, cap[f]]
+    t[3] = tW;
+    for (let it = 0; it < 24; it++) {
+      for (let f = 0; f < 3; f++) {
+        let s = Atd[f];
+        for (let h = 0; h < 3; h++) if (h !== f) s -= G[f][h] * t[h];
         const v = G[f][f] > 0 ? s / G[f][f] : 0;
-        t[f] = v < 0 ? 0 : v > cap[f] ? cap[f] : v;
+        t[f] = v < 0 ? 0 : v > capC[f] ? capC[f] : v;
       }
     }
     return t;

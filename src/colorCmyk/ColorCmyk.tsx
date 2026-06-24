@@ -21,6 +21,9 @@ import { gridSizeFor } from '../colorPositive/dither';
 import { splitBoxSolids } from '../colorPositive/buildColorField';
 import { quantizeCmyk, cmykToRGBA, cmykStats, CmykField, CMYK_PALETTE } from './cmyk';
 import { buildCmykParts, CmykPart } from './buildCmykField';
+import CropEditor from '../imageEdit/CropEditor';
+import ColorEditor from '../imageEdit/ColorEditor';
+import { renderEdited, NO_CROP, defaultColorAdjust, CropRect, ColorAdjust } from '../imageEdit/imageEdit';
 import {
   loadCalibration,
   saveCalibration,
@@ -29,6 +32,7 @@ import {
 } from './calibration';
 import CalibrationTable from './CalibrationTable';
 import CalibrationPicker from './CalibrationPicker';
+import colorWheelUrl from './colorwheel.png';
 import './ColorCmyk.css';
 
 interface Stats {
@@ -72,10 +76,12 @@ const ColorCmyk: React.FC = () => {
   useDocumentTitle('彩色照片转CMYK透光画');
 
   const [maxLength, setMaxLength] = useState(152);
-  const [dotMm, setDotMm] = useState(0.6);
+  const [dotMm, setDotMm] = useState(0.4);
   // 目标总厚度（mm，含白底）；null = 自然厚度（不缩放）。按 0.08 梯度调整。
   const [thicknessTargetMm, setThicknessTargetMm] = useState<number | null>(null);
   const [baseLayers, setBaseLayers] = useState(2);
+  // 顶部白色盖层（层）：每一列都均匀铺这么多白，盖住 CMY 表面 → 顶面始终为白。
+  // 越厚遮盖越实但越暗/偏暖（白料蓝光吸收强）；默认 1。
   const [topLayers, setTopLayers] = useState(1);
   const [addBorder, setAddBorder] = useState(false);
   const [borderWidth, setBorderWidth] = useState(3);
@@ -84,6 +90,10 @@ const ColorCmyk: React.FC = () => {
   const [fileName, setFileName] = useState('');
   const imgRef = useRef<HTMLImageElement | null>(null);
   const [imgReady, setImgReady] = useState(0);
+  const [natSize, setNatSize] = useState({ w: 0, h: 0 });
+  // 编辑：裁剪（归一化）与色彩调整，作为模拟预览/分色的输入
+  const [crop, setCrop] = useState<CropRect>(NO_CROP);
+  const [color, setColor] = useState<ColorAdjust>(() => defaultColorAdjust(['C', 'M', 'Y']));
   const [previewOpen, setPreviewOpen] = useState(true);
   const [stats, setStats] = useState<Stats | null>(null);
   const fieldRef = useRef<CmykField | null>(null);
@@ -144,6 +154,8 @@ const ColorCmyk: React.FC = () => {
   const onFile = useCallback((file: File) => {
     setFileName(file.name);
     setThicknessTargetMm(null); // 新图回到自然厚度
+    setCrop(NO_CROP); // 新图重置裁剪与色彩
+    setColor(defaultColorAdjust(['C', 'M', 'Y']));
     const reader = new FileReader();
     reader.onload = (e) => {
       const url = e.target?.result as string;
@@ -151,6 +163,7 @@ const ColorCmyk: React.FC = () => {
       const img = new Image();
       img.onload = () => {
         imgRef.current = img;
+        setNatSize({ w: img.naturalWidth, h: img.naturalHeight });
         setImgReady((n) => n + 1);
       };
       img.onerror = () => Message.error('图片加载失败');
@@ -159,19 +172,35 @@ const ColorCmyk: React.FC = () => {
     reader.readAsDataURL(file);
   }, []);
 
+  // 快捷载入内置色轮测试图（public/colorwheel.png），等同于上传该图
+  const loadColorWheelTest = useCallback(() => {
+    fetch(colorWheelUrl)
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.blob();
+      })
+      .then((b) => onFile(new File([b], 'colors.png', { type: 'image/png' })))
+      .catch((e) => Message.error(`载入色轮测试图失败：${e?.message || e}`));
+  }, [onFile]);
+
   // (re)quantize whenever image or sampling params change
   useEffect(() => {
     const img = imgRef.current;
-    if (!img || !img.width) return;
-    const grid = gridSizeFor(img.width, img.height, maxLength, dotMm);
+    if (!img || !img.naturalWidth) return;
+    const natW = img.naturalWidth;
+    const natH = img.naturalHeight;
+    // 裁剪后的有效尺寸决定点阵长宽比
+    const effW = Math.max(1, Math.round(crop.w * natW));
+    const effH = Math.max(1, Math.round(crop.h * natH));
+    const grid = gridSizeFor(effW, effH, maxLength, dotMm);
 
-    const c = document.createElement('canvas');
-    c.width = img.width;
-    c.height = img.height;
-    const cx = c.getContext('2d');
-    if (!cx) return;
-    cx.drawImage(img, 0, 0);
-    const src = cx.getImageData(0, 0, img.width, img.height);
+    // 编辑后的画布（裁剪 + 色彩），长边略高于点阵即可——面积加权降采样保细节，
+    // 不必保留全分辨率中间图（同时大幅减轻 100MP 原图的内存/耗时）
+    const cap = Math.min(4096, Math.max(512, 2 * Math.max(grid.cols, grid.rows)));
+    const edited = renderEdited(img, natW, natH, crop, color, ['C', 'M', 'Y'], cap);
+    const ecx = edited.getContext('2d');
+    if (!ecx) return;
+    const src = ecx.getImageData(0, 0, edited.width, edited.height);
 
     const field = quantizeCmyk(src, grid.cols, grid.rows, grid.dotMm, {
       cal,
@@ -188,7 +217,7 @@ const ColorCmyk: React.FC = () => {
     const ocx = oc.getContext('2d');
     if (!ocx) return;
     ocx.putImageData(
-      new ImageData(cmykToRGBA(field, cal, LAYER_MM, baseLayers, topLayers), grid.cols, grid.rows),
+      new ImageData(cmykToRGBA(field, cal, LAYER_MM, baseLayers), grid.cols, grid.rows),
       0,
       0
     );
@@ -206,7 +235,7 @@ const ColorCmyk: React.FC = () => {
       maxLayers: s.maxLayers,
     });
     setFieldVersion((v) => v + 1);
-  }, [imgReady, maxLength, dotMm, thicknessTargetMm, baseLayers, topLayers, cal]);
+  }, [imgReady, maxLength, dotMm, thicknessTargetMm, baseLayers, topLayers, cal, crop, color]);
 
   // auto-(re)build the 3D model (debounced so the Spin can show)
   useEffect(() => {
@@ -219,7 +248,6 @@ const ColorCmyk: React.FC = () => {
         const parts = buildCmykParts(field, {
           layerMm: LAYER_MM,
           baseLayers,
-          topLayers,
           addBorder,
           borderWidth,
         });
@@ -244,14 +272,14 @@ const ColorCmyk: React.FC = () => {
         });
         const W = field.cols * field.dotMm;
         const D = field.rows * field.dotMm;
-        // center on the actual tallest stacked column (base + channels + top cap)
+        // center on the actual tallest stacked column (base + channels incl. top white)
         const [c0, c1, c2, c3] = field.channels;
         let maxTotal = 0;
         for (let i = 0; i < c0.length; i++) {
           const t = c0[i] + c1[i] + c2[i] + c3[i];
           if (t > maxTotal) maxTotal = t;
         }
-        const H = (baseLayers + maxTotal + topLayers) * LAYER_MM;
+        const H = (baseLayers + maxTotal) * LAYER_MM;
         group.position.set(-W / 2, -H / 2, -D / 2);
         viewGroupRef.current = group;
         setTriangles(tris);
@@ -263,7 +291,7 @@ const ColorCmyk: React.FC = () => {
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [fieldVersion, baseLayers, topLayers, addBorder, borderWidth, disposeView]);
+  }, [fieldVersion, baseLayers, addBorder, borderWidth, disposeView]);
 
   // toggle per-colour mesh visibility live (no rebuild — the viewer renders on a
   // continuous loop). Re-applied whenever the model rebuilds.
@@ -411,6 +439,9 @@ const ColorCmyk: React.FC = () => {
                     }}
                     tip="仅支持图片"
                   />
+                  <Button size="small" style={{ marginTop: 10 }} onClick={loadColorWheelTest}>
+                    色轮测试（载入内置色轮图）
+                  </Button>
                 </List.Item>
 
                 {fileName ? (
@@ -427,17 +458,39 @@ const ColorCmyk: React.FC = () => {
                   </div>
                   {previewOpen ? (
                     <>
-                      <ZoomableImage src={imageUrl} alt="原图" className="colorcmyk-fullimg" />
-                      <div className="colorcmyk-cap">原图</div>
+                      <div className="colorcmyk-cap" style={{ marginTop: 0 }}>
+                        裁剪（直接作用于原图）：拖动选框移动、八向手柄改尺寸、上方选比例
+                      </div>
+                      {imageUrl && natSize.w ? (
+                        <CropEditor
+                          src={imageUrl}
+                          naturalWidth={natSize.w}
+                          naturalHeight={natSize.h}
+                          value={crop}
+                          onChange={setCrop}
+                          longEdgeMm={maxLength}
+                          onLongEdgeChange={(mm) => setMaxLength(Math.min(500, Math.max(10, Math.round(mm))))}
+                        />
+                      ) : (
+                        <ZoomableImage src={imageUrl} alt="原图" className="colorcmyk-fullimg" />
+                      )}
+
+                      <div className="colorcmyk-cap" style={{ marginTop: 14 }}>
+                        色彩调整：整体曝光 / 对比 / 色调，按 青·品红·黄 分别调饱和度与亮度
+                      </div>
+                      <ColorEditor value={color} onChange={setColor} primaries={CMYK_PALETTE.slice(0, 3)} />
+
                       {previewUrl ? (
                         <>
+                          <div className="colorcmyk-cap" style={{ marginTop: 14 }}>
+                            CMYK 量化预览（编辑后效果 · 明度由厚度还原）
+                          </div>
                           <ZoomableImage
                             src={previewUrl}
                             alt="预览图"
                             pixelated
                             className="colorcmyk-fullimg colorcmyk-quant"
                           />
-                          <div className="colorcmyk-cap">CMYK 量化预览（明度由厚度还原）</div>
                         </>
                       ) : null}
                     </>
@@ -494,26 +547,25 @@ const ColorCmyk: React.FC = () => {
                   <div className="title">模型厚度</div>
                   <div className="describe">
                     总厚度与各色最高厚度。按 {LAYER_MM}mm 缩放总厚度：调薄更省料、更透亮（饱和度降低），
-                    调厚显色更浓郁（到色域上限为止）。白色底层/顶层固定，不参与缩放。
+                    调厚显色更浓郁（到色域上限为止）。白色底层与顶部白色盖层均固定、计入叠层。
                   </div>
                   {stats ? (
                     <>
                       <div style={{ margin: '6px 0 2px', fontSize: 15 }}>
                         总厚度{' '}
                         <b style={{ fontSize: 17 }}>
-                          {((baseLayers + topLayers + stats.maxLevelsTotal) * LAYER_MM).toFixed(2)} mm
+                          {((baseLayers + stats.maxLevelsTotal) * LAYER_MM).toFixed(2)} mm
                         </b>
                         <span style={{ marginLeft: 8, color: 'var(--color-text-3)', fontSize: 12 }}>
-                          白底 {(baseLayers * LAYER_MM).toFixed(2)} + 顶白 {(topLayers * LAYER_MM).toFixed(2)} +
-                          彩色最高 {(stats.maxLevelsTotal * LAYER_MM).toFixed(2)}（共{' '}
-                          {baseLayers + topLayers + stats.maxLevelsTotal} 层）
+                          白底 {(baseLayers * LAYER_MM).toFixed(2)} + 叠层最高{' '}
+                          {(stats.maxLevelsTotal * LAYER_MM).toFixed(2)}（含顶部白，共{' '}
+                          {baseLayers + stats.maxLevelsTotal} 层）
                         </span>
                       </div>
                       <div className="colorcmyk-counts">
                         {CMYK_PALETTE.map((p, i) => {
-                          // 白色（i=3）的总占用 = 底层 + 顶层 + 该处额外白；C/M/Y 为各自通道峰值
-                          const layers =
-                            i === 3 ? baseLayers + topLayers + stats.maxLayers[3] : stats.maxLayers[i];
+                          // 白色（i=3）总占用 = 底层 + 该处顶部白(W通道)；C/M/Y 为各自通道峰值
+                          const layers = i === 3 ? baseLayers + stats.maxLayers[3] : stats.maxLayers[i];
                           return (
                             <span key={p.id} className="colorcmyk-count">
                               <i
@@ -531,14 +583,14 @@ const ColorCmyk: React.FC = () => {
                           style={{ width: 170 }}
                           mode="button"
                           suffix="mm"
-                          min={Number(((baseLayers + topLayers + 1) * LAYER_MM).toFixed(2))}
+                          min={Number(((baseLayers + 1) * LAYER_MM).toFixed(2))}
                           max={20}
                           step={LAYER_MM}
                           precision={2}
                           value={Number(
                             (
                               thicknessTargetMm ??
-                              (baseLayers + topLayers + stats.maxLevelsTotal) * LAYER_MM
+                              (baseLayers + stats.maxLevelsTotal) * LAYER_MM
                             ).toFixed(2)
                           )}
                           onChange={(v: number) => setThicknessTargetMm(v)}
@@ -575,9 +627,11 @@ const ColorCmyk: React.FC = () => {
                 </List.Item>
 
                 <List.Item key="top">
-                  <div className="title">白色顶层（覆盖层）层数</div>
+                  <div className="title">顶部白色盖层（层数）</div>
                   <div className="describe">
-                    在彩色层之上覆盖白色，统一顶面、起扩散/保护作用；越厚整体越暗。0 = 不覆盖。
+                    <b>每一列</b>都在 C/M/Y 之上、观看面均匀铺这么多层白，让顶面始终是白色（盖住纯品红/黄/青露色）。
+                    其吸收已计入解算，颜色仍准。越厚遮盖越实，但整体越暗、偏暖（白料蓝光吸收最强）。
+                    露色就调大，发暗/发暖就调小。0 = 不加（饱和色直接露在顶面）。
                   </div>
                   <InputNumber
                     style={{ width: 180 }}

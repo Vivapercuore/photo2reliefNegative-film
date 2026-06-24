@@ -3,12 +3,19 @@ import { CALIBRATION_PRESETS, saturationLayers, CmykCalibration } from './calibr
 const LAYER_MM = 0.08;
 
 describe('saturationLayers', () => {
-  it('derives per-filament ceilings from the official preset α', () => {
+  it('derives per-filament ceilings from the preset α (white earns the most)', () => {
     // C/M/Y/W full-ink layers reverse-engineered from the measured absorption.
     // White is the weakest absorber → it earns the most layers (the luminance
-    // ladder); the strong colour inks saturate in far fewer.
+    // ladder); the strong colour inks saturate in far fewer. Asserted as
+    // PROPERTIES (not pinned numbers) so a re-measured preset doesn't break it.
     const cal = CALIBRATION_PRESETS[0].cal;
-    expect(saturationLayers(cal, LAYER_MM)).toEqual([20, 19, 15, 40]);
+    const lv = saturationLayers(cal, LAYER_MM);
+    expect(lv).toHaveLength(4);
+    lv.forEach((v) => expect(v).toBeGreaterThanOrEqual(1));
+    expect(lv[3]).toBe(Math.max(...lv)); // white (weakest) → most layers
+    expect(lv[0]).toBeLessThan(lv[3]);
+    expect(lv[1]).toBeLessThan(lv[3]);
+    expect(lv[2]).toBeLessThan(lv[3]);
   });
 
   it('stronger absorption ⇒ fewer layers to saturate', () => {

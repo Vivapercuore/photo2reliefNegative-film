@@ -21,8 +21,14 @@ import { PhotoSizeMap } from '../constants';
 import { useDocumentTitle } from '../useDocumentTitle';
 import ModelViewer from '../laser/viewer/ModelViewer';
 import ZoomableImage from '../ZoomableImage';
+import CropEditor from '../imageEdit/CropEditor';
+import { renderEdited, NO_CROP, defaultColorAdjust, CropRect } from '../imageEdit/imageEdit';
 import { pack3mf, BambuTemplate, Pack3mfOptions, makeThumbnails } from 'bambu-3mf';
 import type { ReliefRequest, ReliefResponse } from './worker/relief.worker';
+
+/** Relief uses the shared editor for CROP only (it's grayscale) — a fixed
+ *  identity colour adjust so renderEdited just crops + scales. */
+const RELIEF_NO_COLOR = defaultColorAdjust([]);
 
 const RadioGroup = Radio.Group;
 
@@ -101,8 +107,9 @@ const Relief: React.FC = () => {
   const [imageUrl, setImageUrl] = useState('');
   const [fileName, setFileName] = useState('');
   const [previewOpen, setPreviewOpen] = useState(true);
-  const bitmapSrcRef = useRef<File | null>(null);
-  const [imgSize, setImgSize] = useState({ width: 0, height: 0 });
+  const imgElRef = useRef<HTMLImageElement | null>(null);
+  const [natSize, setNatSize] = useState({ w: 0, h: 0 });
+  const [crop, setCrop] = useState<CropRect>(NO_CROP);
 
   const [progress, setProgress] = useState(0);
   const [progressInfo, setProgressInfo] = useState('');
@@ -119,13 +126,12 @@ const Relief: React.FC = () => {
 
   // print size (image area, before border) for display
   const printSize = useMemo(() => {
-    if (!imgSize.width || !imgSize.height) return { width: '0', height: '0' };
-    const scala = Math.min(MaxLength / imgSize.height, MaxLength / imgSize.width);
-    return {
-      width: (imgSize.width * scala).toFixed(2),
-      height: (imgSize.height * scala).toFixed(2),
-    };
-  }, [imgSize, MaxLength]);
+    const w = natSize.w * crop.w;
+    const h = natSize.h * crop.h;
+    if (!w || !h) return { width: '0', height: '0' };
+    const scala = Math.min(MaxLength / h, MaxLength / w);
+    return { width: (w * scala).toFixed(2), height: (h * scala).toFixed(2) };
+  }, [natSize, crop, MaxLength]);
 
   const disposeView = useCallback(() => {
     if (meshRef.current) {
@@ -166,14 +172,17 @@ const Relief: React.FC = () => {
 
   // file upload → data URL + intrinsic size
   const onFile = useCallback((file: File) => {
-    bitmapSrcRef.current = file;
     setFileName(file.name);
+    setCrop(NO_CROP); // 新图重置裁剪
     const reader = new FileReader();
     reader.onload = (ev) => {
       const url = ev.target?.result as string;
       setImageUrl(url);
       const img = new Image();
-      img.onload = () => setImgSize({ width: img.width, height: img.height });
+      img.onload = () => {
+        imgElRef.current = img;
+        setNatSize({ w: img.naturalWidth, h: img.naturalHeight });
+      };
       img.src = url;
     };
     reader.readAsDataURL(file);
@@ -182,12 +191,12 @@ const Relief: React.FC = () => {
   // run the worker (debounced) whenever inputs change
   const runWorker = useMemo(
     () =>
-      debounce((file: File, config: Config) => {
+      debounce((canvas: HTMLCanvasElement, config: Config) => {
         if (!workerRef.current) return;
         setBuilding(true);
         setProgress(1);
         setProgressInfo('准备数据');
-        createImageBitmap(file)
+        createImageBitmap(canvas)
           .then((bitmap) => {
             const req: ReliefRequest = { bitmap, config };
             workerRef.current!.postMessage(req, [bitmap]);
@@ -245,7 +254,8 @@ const Relief: React.FC = () => {
 
   // trigger recompute when image or params change
   useEffect(() => {
-    if (!bitmapSrcRef.current) return;
+    const img = imgElRef.current;
+    if (!img || !img.naturalWidth) return;
     const config: Config = {
       BaseDeep,
       LayerDeep,
@@ -257,9 +267,12 @@ const Relief: React.FC = () => {
       BorderWidth,
       BorderHeight,
     };
-    runWorker(bitmapSrcRef.current, config);
+    // 裁剪后的图作为输入（灰度，无色彩调整）；长边封顶 4096 足够浮雕网格
+    const edited = renderEdited(img, img.naturalWidth, img.naturalHeight, crop, RELIEF_NO_COLOR, [], 4096);
+    runWorker(edited, config);
   }, [
     imageUrl,
+    crop,
     BaseDeep,
     LayerDeep,
     MaxLength,
@@ -392,9 +405,22 @@ const Relief: React.FC = () => {
                   {previewOpen ? (
                     <>
                       <div className="title" style={{ marginTop: 12 }}>
-                        原图
+                        原图 / 裁剪
                       </div>
-                      <ZoomableImage src={imageUrl} alt="原图" className="relief-input-img" />
+                      <div className="describe">拖动选框移动、八向手柄改尺寸、上方选比例；裁剪直接作用于原图。</div>
+                      {imageUrl && natSize.w ? (
+                        <CropEditor
+                          src={imageUrl}
+                          naturalWidth={natSize.w}
+                          naturalHeight={natSize.h}
+                          value={crop}
+                          onChange={setCrop}
+                          longEdgeMm={MaxLength}
+                          onLongEdgeChange={(mm) => setMaxLength(Math.min(1000, Math.max(1, Math.round(mm))))}
+                        />
+                      ) : (
+                        <ZoomableImage src={imageUrl} alt="原图" className="relief-input-img" />
+                      )}
                       <div className="title" style={{ marginTop: 12 }}>
                         黑白预览（按实际色阶）
                       </div>
