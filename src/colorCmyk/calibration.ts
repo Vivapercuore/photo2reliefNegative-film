@@ -62,10 +62,11 @@ export interface CmykCalibration {
 /** Layer height the calibration wedges are authored at (mm). */
 export const CAL_LAYER_MM = 0.08;
 
-/** Per-column wedge thicknesses, in LAYERS. Denser at the thin end: −ln
- *  compresses the bright range and strong absorbers saturate to black quickly,
- *  so the usable signal for a strong channel lives in the first few layers. */
-export const CAL_LAYERS = [1, 2, 3, 5, 8, 12, 18];
+/** Per-column wedge thicknesses, in LAYERS. The calibration strip (a ready-made
+ *  model the user downloads and prints once per filament) has 7 equal steps of
+ *  one extra layer each: 0.08 → 0.56mm. Strong absorbers clip to the noise
+ *  floor on the thick end; those samples are dropped by the fit anyway. */
+export const CAL_LAYERS = [1, 2, 3, 4, 5, 6, 7];
 
 /** Raw 8-bit sRGB values at/above this are clipped (overexposed) — unusable. */
 const CLIP_HI = 250;
@@ -114,22 +115,20 @@ export interface CalibrationPreset {
 }
 
 /**
- * Built-in calibration presets, selectable in the UI. All are fits of the same
- * Bambu CMYK set from backlit photos of its calibration prints, kept as profiles
- * for comparison. α is the material property (exposure-independent — fitted from
- * per-column transmission RATIOS), so `white` is the ideal full backlight
- * [1,1,1] rather than the photo's exposure (the backlight was neutral, R≈G≈B).
+ * Built-in calibration presets, selectable in the UI. α is the material
+ * property (exposure-independent — fitted from per-column transmission
+ * RATIOS), so `white` is the ideal full backlight [1,1,1] rather than the
+ * photo's exposure (the backlight was neutral, R≈G≈B).
  *
- * 拓竹CMYK3: refined from a backlit photo of the CMYK2 wheel print (2026-06-17).
- *   That print came out darker/muddier than the source — esp. the cool side
- *   (cyan/green/blue) and yellow — which means the real absorption is HIGHER than
- *   CMYK2 measured (print darker than target ⇒ solver used too much ink). So the
- *   main (diagonal) absorptions are nudged UP (solver uses less ink → brighter,
- *   slightly less saturated print) and the worst cross-absorptions (C·G, M·B)
- *   trimmed (cleaner cyan/blue); the white's blue absorption is dropped to undo
- *   the warm/dim cast. The warm hues (red/magenta) were close, so they move least.
- * 拓竹CMYK2: the clean wedge re-fit (2026-06-17) — basis for CMYK3.
- * 拓竹官方CMYK套装: the earlier fit (2026-06-15) — colours come out paler.
+ * 拓竹CMYK3: fit of the Bambu CMYK set, refined from a backlit photo of the
+ *   CMYK2 wheel print (2026-06-17). That print came out darker/muddier than
+ *   the source — esp. the cool side (cyan/green/blue) and yellow — which means
+ *   the real absorption is HIGHER than the earlier fit measured (print darker
+ *   than target ⇒ solver used too much ink). So the main (diagonal)
+ *   absorptions are nudged UP (solver uses less ink → brighter, slightly less
+ *   saturated print) and the worst cross-absorptions (C·G, M·B) trimmed
+ *   (cleaner cyan/blue); the white's blue absorption is dropped to undo the
+ *   warm/dim cast. The warm hues (red/magenta) were close, so they move least.
  */
 export const CALIBRATION_PRESETS: CalibrationPreset[] = [
   {
@@ -146,38 +145,6 @@ export const CALIBRATION_PRESETS: CalibrationPreset[] = [
       calibrated: true,
       label: '拓竹CMYK3',
       updatedAt: '2026-06-17',
-    },
-  },
-  {
-    id: 'bambu-cmyk-2',
-    label: '拓竹CMYK2',
-    cal: {
-      alpha: [
-        [6.088, 2.092, 0.852], // C 青：强挡红、少挡绿、近透蓝
-        [0.444, 7.819, 2.311], // M 品红：强挡绿、透红、半挡蓝
-        [0.417, 0.665, 10.582], // Y 黄：强挡蓝、红绿双透
-        [0.582, 0.772, 1.076], // W 白：弱吸收半透扩散层（偏暖）
-      ],
-      white: [1, 1, 1],
-      calibrated: true,
-      label: '拓竹CMYK2',
-      updatedAt: '2026-06-17',
-    },
-  },
-  {
-    id: 'bambu-official-cmyk',
-    label: '拓竹官方CMYK套装',
-    cal: {
-      alpha: [
-        [4.494, 3.523, 2.509], // C 青：最挡红、最透蓝
-        [1.557, 4.817, 3.816], // M 品红：最挡绿、最透红
-        [1.089, 1.683, 6.047], // Y 黄：最挡蓝、红绿双透
-        [1.188, 1.563, 2.198], // W 白：近中性半透扩散层
-      ],
-      white: [1, 1, 1],
-      calibrated: true,
-      label: '拓竹官方CMYK套装',
-      updatedAt: '2026-06-15',
     },
   },
 ];
@@ -362,6 +329,55 @@ export function fitCalibration(samples: WedgeSample[]): CmykCalibration {
     }
   }
   return { alpha, white, calibrated: true, updatedAt: new Date().toISOString() };
+}
+
+/**
+ * Per-filament recalibration merge. Supports progressive per-strip calibration:
+ * the user can shoot & sample one filament strip at a time and fit right away,
+ * without re-shooting the filaments already measured. Given the just-computed
+ * `fit` (from whatever strips are currently sampled), `base` (the calibration in
+ * effect at fit time), and the filament indices actually re-measured this round
+ * (`sampledIdx`), it returns a calibration whose α rows come from `fit` for the
+ * sampled filaments and from `base` for the rest.
+ *
+ * This row-splice is physically sound because α is an EXPOSURE-INDEPENDENT
+ * material property: each row is fitted from per-column transmission RATIOS
+ * (patch / local white), which cancels camera gain and backlight level. Rows
+ * therefore compose freely across separate photos taken under different
+ * exposures — a filament's α means the same thing no matter which shoot
+ * produced it, so mixing a fresh row with carried-over rows is safe.
+ *
+ * Neither argument is mutated; all α rows in the result are fresh copies (no
+ * shared references with `base` or `fit`). `white` / `updatedAt` are taken from
+ * `fit` (the current shoot's reference); the result is marked `calibrated: true`
+ * with `label: undefined` because a merged result is a custom calibration.
+ *
+ * CAVEAT — `white` is NOT row-spliced like α. Unlike α (an exposure-independent
+ * ratio), `white` is the current shoot's absolute linear backlight brightness
+ * (I₀), and the whole result takes it from `fit`. So re-sampling ONE strip under
+ * a different exposure/backlight replaces the I₀ used to render ALL rows — the
+ * carried-over rows will simulate under a different white reference than the one
+ * they were fitted against, shifting their preview colour/brightness. For a
+ * consistent progressive re-measure, shoot each supplementary strip under the
+ * SAME exposure/backlight as the original, or re-measure all four together when
+ * lighting changes.
+ */
+export function mergeCalibration(
+  base: CmykCalibration,
+  fit: CmykCalibration,
+  sampledIdx: number[]
+): CmykCalibration {
+  const sampled = new Set(sampledIdx);
+  const alpha = base.alpha.map((row, f) =>
+    (sampled.has(f) ? fit.alpha[f] : row).slice()
+  );
+  return {
+    alpha,
+    white: [fit.white[0], fit.white[1], fit.white[2]],
+    calibrated: true,
+    updatedAt: fit.updatedAt,
+    label: undefined,
+  };
 }
 
 const LS_KEY = 'colorCmyk.calibration';

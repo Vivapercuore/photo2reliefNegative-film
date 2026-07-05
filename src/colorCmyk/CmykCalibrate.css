@@ -293,3 +293,183 @@
     opacity: 0;
   }
 }
+
+/* ------------------------------------------------------------------------- */
+/* StripAlignFrame: draggable calibration-strip alignment box (per-strip)    */
+/* ------------------------------------------------------------------------- */
+.salign {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  line-height: 0; /* kill the inline-canvas descender gap */
+}
+/* the photo, drawn at the display scale; border matches .cmykcal-canvas */
+.salign-photo {
+  display: block;
+  max-width: 100%;
+  border: 1px solid #444;
+  border-radius: 2px;
+}
+/* the interactive SVG, laid exactly over the photo. width/height:100% override
+ * the SVG's own width/height attributes so the overlay shrinks WITH the photo
+ * when the column is narrower than dispW (the viewBox keeps drawing correct);
+ * otherwise the over-constrained abs box keeps its attribute width and overflows
+ * the shrunk photo, decoupling the frame from what the user sees. */
+.salign-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none; /* pointer drags shouldn't scroll/zoom the page */
+}
+/* corner handles grab, edge handles resize, the interior moves the whole box */
+.salign-corner {
+  cursor: grab;
+}
+.salign-edge {
+  cursor: move;
+}
+.salign-inner {
+  cursor: move;
+}
+
+/* ------------------------------------------------------------------------- */
+/* per-filament tab row + measured-strip swatches (四色分别校准)             */
+/* ------------------------------------------------------------------------- */
+.cmykcal-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 12px;
+}
+/* colour dot inside each filament tab (white gets a visible ring) */
+.cmykcal-tab-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: -1px;
+  border: 1px solid transparent;
+}
+.cmykcal-tab-dot.is-white {
+  border-color: rgba(0, 0, 0, 0.35);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5);
+}
+
+/* white-reference distance slider row labels */
+.cmykcal-slider-label {
+  font-size: 12px;
+  color: var(--color-text-3, #999);
+  flex: 0 0 auto;
+}
+.cmykcal-slider-val {
+  font-size: 12px;
+  color: var(--color-text-2, #ccc);
+  min-width: 34px;
+  text-align: right;
+  flex: 0 0 auto;
+}
+
+/* measured sRGB of the 7 steps + white reference (仿 .cmykcal-ramp-strip) */
+.cmykcal-strip-swatches {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  max-width: 520px;
+  margin: 10px 0 4px;
+  border-radius: 3px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+.cmykcal-strip-swatches i {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 24px;
+  cursor: help;
+  transition: outline-color 0.1s;
+}
+.cmykcal-strip-swatches i:hover {
+  outline: 2px solid var(--color-text-1, #fff);
+  outline-offset: -2px;
+  position: relative;
+  z-index: 1;
+}
+/* the white-reference block sits apart with a small gap + divider */
+.cmykcal-strip-swatches i.is-white-ref {
+  flex: 0 0 34px;
+  margin-left: 6px;
+  border-left: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* ------------------------------------------------------------------------- */
+/* ArtworkCorrect: 成品对照修正 (slider-match a preview to a physical print)  */
+/* ------------------------------------------------------------------------- */
+.artfix {
+  min-width: 0;
+}
+/* mode switch (校准条校准 / 成品对照修正) sits above the flow steps */
+.artfix-mode-row {
+  margin: 2px 0 2px;
+}
+
+/* simulated split-preview: scaled up from the cols×rows offscreen render.
+ * border matches .cmykcal-canvas; width fills the column up to a cap. */
+.artfix-preview {
+  margin: 10px 0 12px;
+  max-width: 480px;
+}
+.artfix-canvas {
+  display: block;
+  width: 100%;
+  max-width: 480px;
+  height: auto;
+  border: 1px solid #444;
+  border-radius: 2px;
+  image-rendering: auto;
+}
+
+/* one HSL slider row: fixed-width label + slider + right-aligned value */
+.artfix-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0;
+}
+.artfix-slider-label {
+  flex: 0 0 64px;
+  font-size: 12px;
+  color: var(--color-text-3, #999);
+}
+.artfix-slider-val {
+  flex: 0 0 48px;
+  min-width: 48px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--color-text-2, #ccc);
+}
+
+/* reset buttons row */
+.artfix-btn-row {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+
+/* ① print white/thickness settings row (wraps on narrow columns) */
+.artfix-print-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  margin: 4px 0 4px;
+}
+.artfix-print-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.artfix-print-label {
+  font-size: 12px;
+  color: var(--color-text-3, #999);
+  flex: 0 0 auto;
+}
