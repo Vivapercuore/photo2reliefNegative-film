@@ -1,6 +1,5 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card } from '@arco-design/web-react';
 import { useDocumentTitle } from './useDocumentTitle';
 import './Home.css';
 
@@ -8,19 +7,21 @@ interface FeatureItem {
   title: string;
   description: string;
   path: string;
+  /** 变换标签右段（左段固定 PHOTO）：四工具皆为「照片 → 物质」的一种变换 */
+  transform: string;
   icon: React.ReactNode;
 }
 
 /**
  * Laser-cutting icon: a laser head emits a beam down onto a sheet of material
  * that carries a cut contour and a bored hole, with a spark at the impact
- * point. Line-art (currentColor) to match the dark Arco theme and the emoji
- * icons next to it.
+ * point. Line-art (currentColor) so the parent can ignite it to a warm
+ * backlight glow on hover.
  */
 const LaserCutIcon: React.FC = () => (
   <svg
-    width="48"
-    height="48"
+    width="44"
+    height="44"
     viewBox="0 0 48 48"
     fill="none"
     stroke="currentColor"
@@ -48,12 +49,12 @@ const LaserCutIcon: React.FC = () => (
  * Relief / backlit-lithophane icon: a backlight glow with rays at the top, a
  * relief plate below whose interior bars rise to different heights to read as
  * the light/dark relief surface (the light shining through it). Line-art
- * (currentColor) to match the laser-cut icon.
+ * (currentColor) so the parent can ignite it to a warm backlight glow on hover.
  */
 const ReliefIcon: React.FC = () => (
   <svg
-    width="48"
-    height="48"
+    width="44"
+    height="44"
     viewBox="0 0 48 48"
     fill="none"
     stroke="currentColor"
@@ -82,8 +83,8 @@ const ReliefIcon: React.FC = () => (
  */
 const ColorPositiveIcon: React.FC = () => (
   <svg
-    width="48"
-    height="48"
+    width="44"
+    height="44"
     viewBox="0 0 48 48"
     fill="none"
     stroke="currentColor"
@@ -115,8 +116,8 @@ const ColorPositiveIcon: React.FC = () => (
  */
 const ColorCmykIcon: React.FC = () => (
   <svg
-    width="48"
-    height="48"
+    width="44"
+    height="44"
     viewBox="0 0 48 48"
     fill="none"
     stroke="currentColor"
@@ -143,12 +144,14 @@ const features: FeatureItem[] = [
     title: '照片转浮雕负片',
     description: '上传照片，浏览器内实时生成可预览、可下载(STL)的3D浮雕负片模型，直接切片打印，无需 OpenSCAD。',
     path: '/photo2relief',
+    transform: 'RELIEF',
     icon: <ReliefIcon />,
   },
   {
     title: '激光刀切转3D模型',
     description: '上传拓竹社区的激光刀切 .lac 文件，自动读取刀路，挤出生成可预览、可下载(STL)的3D模型。',
     path: '/lac2model',
+    transform: 'LAC → 3D',
     icon: <LaserCutIcon />,
   },
   {
@@ -156,6 +159,7 @@ const features: FeatureItem[] = [
     description:
       '上传彩色照片，Floyd-Steinberg 抖动到 RGB+黑，按喷嘴物理分辨率生成「颜色分布直接决定色彩」的多色正片（测试版，多色 3MF 导出开发中）。',
     path: '/color-positive',
+    transform: 'POSITIVE',
     icon: <ColorPositiveIcon />,
   },
   {
@@ -163,6 +167,7 @@ const features: FeatureItem[] = [
     description:
       'CMY + 白 四色透光画：白色扩散层厚度控制明暗（光刻画式），CMY 叠加上色。可校准耗材色差与透光系数，4 色 AMS 即可打印（测试版）。',
     path: '/color-cmyk',
+    transform: 'CMYK',
     icon: <ColorCmykIcon />,
   },
 ];
@@ -172,25 +177,62 @@ const Home: React.FC = () => {
   useDocumentTitle();
 
   return (
-    <div className="home-container">
-      <header className="home-header">
-        <h2 className="home-title">viva的3D打印小工具</h2>
-        <p className="home-subtitle">选择一个功能开始使用</p>
-      </header>
-      <div className="feature-grid">
-        {features.map((feature) => (
-          <Card
-            key={feature.path}
-            className="feature-card"
-            hoverable
-            bordered
-            onClick={() => navigate(feature.path)}
-          >
-            <div className="feature-icon">{feature.icon}</div>
-            <h5 className="feature-title">{feature.title}</h5>
-            <p className="feature-desc">{feature.description}</p>
-          </Card>
-        ))}
+    <div className="home">
+      <div className="home-inner">
+        <header className="home-hero lx-rise">
+          <div className="home-eyebrow">PHOTO → MATTER</div>
+          <h1 className="home-brand">
+            <span className="home-brand-mark">viva 的 3D 打印小工具</span>
+          </h1>
+          <p className="home-tagline">
+            浏览器内 3D 制造
+            <span className="home-tagline-arrow">·</span>
+            照片
+            <span className="home-tagline-arrow">→</span>
+            <span className="home-tagline-dim">靠厚度与分色控制光的实体</span>
+          </p>
+        </header>
+
+        <div className="home-grid">
+          {features.map((feature, i) => (
+            <button
+              key={feature.path}
+              type="button"
+              className="home-plate lx-rise"
+              style={
+                { '--lx-rise-delay': `${80 + i * 50}ms` } as React.CSSProperties
+              }
+              onClick={() => navigate(feature.path)}
+            >
+              <div className="home-plate-head">
+                <span className="home-plate-index">
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <span className="home-plate-transform">
+                  PHOTO
+                  <span className="home-plate-arrow">→</span>
+                  {feature.transform}
+                </span>
+              </div>
+
+              <span className="home-plate-icon">{feature.icon}</span>
+
+              <h2 className="home-plate-title">{feature.title}</h2>
+              <p className="home-plate-desc">{feature.description}</p>
+
+              <span className="home-plate-cta">
+                进入
+                <span className="home-plate-cta-arrow" aria-hidden="true">
+                  →
+                </span>
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className="home-foot lx-rise" style={{ '--lx-rise-delay': '260ms' } as React.CSSProperties}>
+          IN-BROWSER · NO UPLOAD · WATERTIGHT STL / 3MF
+        </div>
       </div>
     </div>
   );

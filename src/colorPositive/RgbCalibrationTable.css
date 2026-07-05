@@ -1,4 +1,17 @@
-/* RGB 实测原色色卡：等宽色块平铺填满整行（呼应 CMYK 的满宽渐变条） */
+/* =============================================================================
+   RGB 校准页 / 表格 — LUMEN「实验室样片」视觉层
+   契约来源：src/theme/DESIGN.md §8「校准页」。
+   本文件同时被 RgbCalibrationTable.tsx（.rgbcal-sw-*）与 RgbCalibrate.tsx
+   （.rgbcal-eyebrow，因其经由 RgbCalibrationTable 间接引入本样式表）使用。
+   ============================================================================= */
+
+/* 分区眉标（校准页步骤/状态标题） */
+.rgbcal-eyebrow {
+  margin-bottom: var(--lx-space-2);
+}
+
+/* RGB 实测原色色卡：等宽色块平铺填满整行（呼应 CMYK 的满宽渐变条），
+   每块做成"样片"质感：小圆角 + 发丝边，而非纯色块 */
 .rgbcal-sw-row {
   display: flex;
   gap: 8px;
@@ -15,23 +28,23 @@
 .rgbcal-sw-chip {
   width: 100%;
   height: 40px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+  border-radius: var(--lx-radius-control);
+  border: 1px solid var(--lx-line-bright);
+  box-shadow: var(--lx-panel-inset-shadow);
 }
 .rgbcal-sw-name {
   font-size: 12px;
   line-height: 1;
-  color: var(--color-text-2, #ccc);
+  color: var(--lx-text-2);
   white-space: nowrap;
 }
 .rgbcal-sw-cap {
   font-size: 12px;
-  color: var(--color-text-3, #999);
+  color: var(--lx-text-3);
   margin: 2px 0 10px;
 }
 
-/* 饱和度还原滑杆行 */
+/* 饱和度还原 / 叠色补偿 滑杆行 — 数值读数用等宽数字 */
 .rgbcal-sat-row {
   display: flex;
   align-items: center;
@@ -41,6 +54,5 @@
 .rgbcal-sat-val {
   min-width: 40px;
   text-align: right;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-text-2, #ccc);
+  color: var(--lx-text-2);
 }

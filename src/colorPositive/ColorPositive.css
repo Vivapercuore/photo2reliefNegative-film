@@ -1,19 +1,22 @@
+/* =============================================================================
+   彩色照片转正片（RGB+）工作台 — LUMEN 视觉层
+   契约来源：src/theme/DESIGN.md §8「工作台页」。
+   ============================================================================= */
+
+.colorpos,
+.colorpos *,
+.colorpos *::before,
+.colorpos *::after {
+  box-sizing: border-box;
+}
+
 .colorpos {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-}
-
-.colorpos .page-nav {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--color-border-2, #333);
-  flex: 0 0 auto;
-}
-.colorpos .page-nav-title {
-  font-weight: 600;
+  min-height: 100vh;
+  background: var(--lx-bg-0);
+  color: var(--lx-text-1);
+  font-family: var(--lx-font-body);
 }
 
 .colorpos-body {
@@ -26,18 +29,24 @@
   width: 420px;
   flex: 0 0 auto;
   overflow-y: auto;
-  border-right: 1px solid var(--color-border-2, #333);
-  padding: 0 10px;
+  border-right: 1px solid var(--lx-line);
+  padding: var(--lx-space-4) var(--lx-space-3);
 }
 .colorpos-panel .title {
   font-weight: 600;
   margin-bottom: 4px;
+  color: var(--lx-text-1);
 }
 .colorpos-panel .describe {
-  color: var(--color-text-3, #999);
+  color: var(--lx-text-2);
   font-size: 12px;
   line-height: 1.6;
   margin-bottom: 10px;
+}
+
+/* 分区眉标（DESIGN.md §5 .lx-eyebrow） */
+.colorpos-eyebrow {
+  margin: var(--lx-space-2) 0 var(--lx-space-2);
 }
 
 .colorpos-viewer {
@@ -45,19 +54,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #111;
   overflow: auto;
-  padding: 16px;
+  padding: var(--lx-space-4);
 }
 .colorpos-canvas {
   image-rendering: pixelated;
   max-width: 100%;
   max-height: 100%;
-  border: 1px solid #444;
-  background: #000;
-}
-.colorpos-empty {
-  color: #888;
+  border: 1px solid var(--lx-line);
+  background: var(--lx-bg-1);
 }
 
 .colorpos-stats {
@@ -76,13 +81,14 @@
   align-items: center;
   gap: 5px;
   font-size: 13px;
+  color: var(--lx-text-2);
 }
 .colorpos-swatch {
   display: inline-block;
   width: 12px;
   height: 12px;
-  border-radius: 2px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: var(--lx-radius-tag);
+  border: 1px solid var(--lx-line-bright);
 }
 
 .colorpos-size-tag {
@@ -103,18 +109,19 @@
 .colorpos-cal-collapse {
   font-size: 13px;
   font-weight: 600;
-  border-top: 1px solid var(--color-border-2, #333);
+  border-top: 1px solid var(--lx-line);
   padding-top: 8px;
   margin-top: 8px;
+  color: var(--lx-text-1);
 }
 
 .colorpos-required {
-  color: var(--color-danger-6, #f53f3f);
+  color: var(--lx-danger);
   font-size: 12px;
   margin-left: 6px;
 }
 .colorpos-ams-unset {
-  color: var(--color-danger-6, #f53f3f);
+  color: var(--lx-danger);
   font-size: 12px;
   margin-top: 8px;
 }
@@ -132,23 +139,23 @@
 }
 .colorpos-collapse-icon {
   font-size: 12px;
-  color: var(--color-text-3, #999);
+  color: var(--lx-text-3);
 }
 
 .colorpos-fullimg {
   width: 100%;
   max-height: 60vh;
   object-fit: contain;
-  border: 1px solid #444;
-  border-radius: 2px;
+  border: 1px solid var(--lx-line);
+  border-radius: var(--lx-radius-control);
 }
 .colorpos-dither {
-  background: #000;
+  background: var(--lx-bg-1);
   margin-top: 10px;
 }
 .colorpos-cap {
   font-size: 12px;
-  color: var(--color-text-3, #999);
+  color: var(--lx-text-3);
   text-align: center;
   margin: 4px 0 6px;
 }
@@ -162,4 +169,40 @@
   display: block;
   width: 100%;
   height: 100%;
+}
+
+/* ---- 空状态（.lx-empty 之上叠加文案层级）------------------------------- */
+.colorpos-empty-title {
+  font-family: var(--lx-font-display);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--lx-text-2);
+}
+.colorpos-empty-sub {
+  font-size: 12px;
+  color: var(--lx-text-3);
+}
+
+/* ---- 视口 HUD 读数（左上角，逻辑像素 / 物理尺寸）------------------------ */
+.colorpos-viewport-hud {
+  top: var(--lx-space-3);
+  left: var(--lx-space-3);
+}
+
+/* =============================================================================
+   ≤900px 响应式：面板上、视口下折叠
+   ============================================================================= */
+@media (max-width: 900px) {
+  .colorpos-body {
+    flex-direction: column;
+  }
+  .colorpos-panel {
+    width: 100%;
+    max-height: 52vh;
+    border-right: none;
+    border-bottom: 1px solid var(--lx-line);
+  }
+  .colorpos-viewer {
+    min-height: 40vh;
+  }
 }

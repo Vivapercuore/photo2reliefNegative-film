@@ -62,7 +62,7 @@ const ModelViewer: React.FC<ModelViewerProps> = ({ object, className, revision }
     setGlError(false);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1d1d1d);
+    scene.background = new THREE.Color(0x0a0f1a);
     sceneRef.current = scene;
 
     const width = container.clientWidth || 600;
@@ -82,22 +82,24 @@ const ModelViewer: React.FC<ModelViewerProps> = ({ object, className, revision }
 
     // Sky/ground hemisphere fill gives volume even on flat top faces; a strong
     // key plus a softer fill and a back rim light bring out the 3D structure.
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x4a4a52, 0.55);
+    // Intensities nudged up slightly vs. the old neutral-grey background so
+    // the model still reads clearly against the darker #0A0F1A backdrop.
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x4a4a52, 0.6);
     scene.add(hemi);
-    scene.add(new THREE.AmbientLight(0xffffff, 0.25));
-    const key = new THREE.DirectionalLight(0xffffff, 1.15);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+    const key = new THREE.DirectionalLight(0xffffff, 1.25);
     key.position.set(0.7, 1.4, 0.9);
     scene.add(key);
-    const fill = new THREE.DirectionalLight(0xffffff, 0.5);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.55);
     fill.position.set(-0.9, 0.4, -0.6);
     scene.add(fill);
-    const rim = new THREE.DirectionalLight(0xffffff, 0.45);
+    const rim = new THREE.DirectionalLight(0xffffff, 0.5);
     rim.position.set(0.2, 0.6, -1.2);
     scene.add(rim);
 
-    const grid = new THREE.GridHelper(400, 40, 0x555555, 0x333333);
+    const grid = new THREE.GridHelper(400, 40, 0x2a3556, 0x1e2740);
     (grid.material as THREE.Material).transparent = true;
-    (grid.material as THREE.Material).opacity = 0.4;
+    (grid.material as THREE.Material).opacity = 0.5;
     scene.add(grid);
     gridRef.current = grid;
 
@@ -220,9 +222,9 @@ const ModelViewer: React.FC<ModelViewerProps> = ({ object, className, revision }
       (gridRef.current.material as THREE.Material).dispose();
     }
     const gsize = Math.ceil((maxDim * 2) / 10) * 10;
-    const grid = new THREE.GridHelper(gsize, 40, 0x555555, 0x333333);
+    const grid = new THREE.GridHelper(gsize, 40, 0x2a3556, 0x1e2740);
     (grid.material as THREE.Material).transparent = true;
-    (grid.material as THREE.Material).opacity = 0.4;
+    (grid.material as THREE.Material).opacity = 0.5;
     grid.position.set(center.x, box.min.y, center.z);
     scene.add(grid);
     gridRef.current = grid;
@@ -246,7 +248,7 @@ const ModelViewer: React.FC<ModelViewerProps> = ({ object, className, revision }
         alignItems: glError ? 'center' : undefined,
         justifyContent: glError ? 'center' : undefined,
         textAlign: 'center',
-        color: '#bbb',
+        color: 'var(--lx-text-2)',
         padding: glError ? 16 : undefined,
         boxSizing: 'border-box',
       }}

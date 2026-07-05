@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   List,
   Input,
@@ -29,6 +28,7 @@ import {
 import CalibrationTable from './CalibrationTable';
 import CalibrationPicker from './CalibrationPicker';
 import PhotoDropZone from './PhotoDropZone';
+import PageNav from '../components/PageNav';
 import './CmykCalibrate.css';
 
 function saveBlob(data: BlobPart, filename: string) {
@@ -47,7 +47,6 @@ const LAYER_MM = CAL_LAYER_MM;
 const CORNER_LABELS = ['左上', '右上', '右下', '左下'];
 
 const CmykCalibrate: React.FC = () => {
-  const navigate = useNavigate();
   useDocumentTitle('CMYK 耗材校准');
 
   const [exporting, setExporting] = useState(false);
@@ -349,18 +348,16 @@ const CmykCalibrate: React.FC = () => {
 
   return (
     <div className="cmykcal">
-      <div className="page-nav">
-        <Button type="text" size="small" onClick={() => navigate('/color-cmyk')}>
-          ← 返回 CMYK 模块
-        </Button>
-        <span className="page-nav-title">CMYK 耗材校准</span>
-      </div>
+      <PageNav title="CMYK 耗材校准" code="CMYK·CAL" backTo="/color-cmyk" />
 
       <div className="cmykcal-body">
         <div className="cmykcal-grid">
         <List className="cmykcal-col" size="large" header="当前校准 · 参数与预览">
           <List.Item key="status">
-            <div className="title">当前校准</div>
+            <div className="lx-eyebrow">
+              <span>当前校准</span>
+              <span className="lx-eyebrow-code">CURRENT</span>
+            </div>
             <div className="cmykcal-status">
               {current.calibrated ? (
                 <Tag color="green">
@@ -384,7 +381,10 @@ const CmykCalibrate: React.FC = () => {
             />
             <CalibrationTable cal={current} showTable={false} />
             <div className="cmykcal-editbox">
-              <div className="cmykcal-edit-title">手动微调参数</div>
+              <div className="lx-eyebrow cmykcal-edit-title">
+                <span>手动微调参数</span>
+                <span className="lx-eyebrow-code">MANUAL</span>
+              </div>
               <div className="cmykcal-warn">⚠ 手动修改会直接改变作画的颜色还原，请谨慎操作。</div>
               <CalibrationTable cal={current} showSwatches={false} onChange={onEditCurrent} />
               <div className="cmykcal-name-row">
@@ -409,7 +409,10 @@ const CmykCalibrate: React.FC = () => {
 
         <List className="cmykcal-col" size="large" header="校准流程">
           <List.Item key="step1">
-            <div className="title">① 分色打印校准片</div>
+            <div className="lx-eyebrow cmykcal-step">
+              <span>① 分色打印校准片</span>
+              <span className="lx-eyebrow-code">STEP 01</span>
+            </div>
             <div className="describe">
               导出的 3MF 含 <b>4 个打印盘</b>（青/品红/黄/白各一盘）。在 Bambu Studio 里逐盘选择、
               逐个换上对应耗材打印——<b>全程不换色、无需 AMS</b>。层高固定 {LAYER_MM}mm（与作画一致，
@@ -451,7 +454,7 @@ const CmykCalibrate: React.FC = () => {
                             key={k}
                             d={`M ${6 + fx * 248 - 5} ${y + rh} l 4 4 l 2 0 l 4 -4`}
                             fill="none"
-                            stroke="#999"
+                            stroke="var(--lx-line-bright)"
                             strokeWidth="1"
                           />
                         ))
@@ -469,7 +472,10 @@ const CmykCalibrate: React.FC = () => {
           </List.Item>
 
           <List.Item key="step2">
-            <div className="title">② 背光拍照并载入</div>
+            <div className="lx-eyebrow cmykcal-step">
+              <span>② 背光拍照并载入</span>
+              <span className="lx-eyebrow-code">STEP 02</span>
+            </div>
             <div className="describe">
               把拼好的整片平放在灯板/背光上，<b>四周留出一圈背光</b>（用作白参考）。建议关闭手机自动
               白平衡、锁定曝光，正对拍一张，载入到这里。<b>照片只在本地浏览器读取处理，不会离开你的设备。</b>
@@ -486,7 +492,10 @@ const CmykCalibrate: React.FC = () => {
 
           {photoUrl ? (
             <List.Item key="step3">
-              <div className="title">③ 点击拼接块四角配准</div>
+              <div className="lx-eyebrow cmykcal-step">
+                <span>③ 点击拼接块四角配准</span>
+                <span className="lx-eyebrow-code">STEP 03</span>
+              </div>
               <div className="describe">
                 依次点击<b>四色拼接块</b>的四个角（青行左上角 → 右上角 → 白行右下角 → 左下角）：左上 → 右上 → 右下 → 左下。点满四个后会叠加绿色采样点，第五次点击重新开始。
               </div>
@@ -505,7 +514,10 @@ const CmykCalibrate: React.FC = () => {
 
           {fitted ? (
             <List.Item key="step4">
-              <div className="title">④ 确认 · 命名保存到本地</div>
+              <div className="lx-eyebrow cmykcal-step">
+                <span>④ 确认 · 命名保存到本地</span>
+                <span className="lx-eyebrow-code">STEP 04</span>
+              </div>
               <div className="describe">
                 下方是拟合结果（各耗材 0.8mm 厚度下的显色预测与 α 系数），与白参考对比看是否合理。
                 给这组耗材起个名字保存到本地，之后可在「我保存的」里快捷点选。

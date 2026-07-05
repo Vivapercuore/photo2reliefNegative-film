@@ -86,9 +86,10 @@ const RgbCalibrationTable: React.FC<Props> = ({
         value={v}
         onChange={(nv: number) => setChannel(id, c, nv ?? 0)}
         style={{ width: '100%', minWidth: 56 }}
+        className="lx-data"
       />
     ) : (
-      v
+      <span className="lx-data">{v}</span>
     );
   };
 
@@ -120,7 +121,8 @@ const RgbCalibrationTable: React.FC<Props> = ({
             ))}
           </div>
           <div className="rgbcal-sw-cap">
-            各原色作画所用的实际显色（实测偏色 + 饱和度还原 {(cal.chromaGain ?? 1).toFixed(1)}×）
+            各原色作画所用的实际显色（实测偏色 + 饱和度还原{' '}
+            <span className="lx-data">{(cal.chromaGain ?? 1).toFixed(1)}×</span>）
           </div>
         </>
       ) : null}

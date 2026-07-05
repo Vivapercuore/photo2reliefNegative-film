@@ -1,0 +1,303 @@
+/* =============================================================================
+   LUMEN「透光」— 主题基建 tokens
+   唯一契约来源：src/theme/DESIGN.md
+   本文件只定义设计 token、全局重置、工具类；不含业务样式。
+   ============================================================================= */
+
+:root {
+  /* ---- §1 色板 --------------------------------------------------------- */
+  --lx-bg-0: #05070D;   /* 页面最底（深空蓝黑） */
+  --lx-bg-1: #0A0F1A;   /* 3D 视口 / 画布凹陷区 */
+  --lx-bg-2: #101625;   /* 面板表面 */
+  --lx-bg-3: #161D30;   /* 悬浮 / hover 抬升面 */
+
+  --lx-line: #1E2740;         /* 发丝分割线 / 边框 */
+  --lx-line-bright: #2A3556;  /* hover 边框 / 强调分割 */
+
+  --lx-text-1: #E6ECF8;  /* 主文字 */
+  --lx-text-2: #9AA4C0;  /* 次要文字 */
+  --lx-text-3: #5D688A;  /* 弱文字 / 占位 */
+
+  --lx-cyan: #3FD8F0;     /* 主交互色（Arco primary） */
+  --lx-violet: #8B7CFF;   /* 光谱中段（仅渐变用） */
+  --lx-magenta: #E86BFF;  /* 光谱末端（仅渐变 / 次强调） */
+  --lx-backlight: #FFD9A3;/* 暖背光（点睛） */
+
+  --lx-ok: #53E29B;       /* 成功 */
+  --lx-warn: #FFC24D;     /* 警告 */
+  --lx-danger: #FF6B7A;   /* 危险 */
+
+  /* 光谱渐变（唯一定义，勿另造） */
+  --lx-spectrum: linear-gradient(90deg, #3FD8F0 0%, #8B7CFF 55%, #E86BFF 100%);
+  /* 暖背光辉光（唯一定义） */
+  --lx-backlight-glow: 0 0 24px rgba(255, 190, 110, 0.22);
+
+  /* ---- §2 字体栈 ------------------------------------------------------- */
+  --lx-cjk: "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei",
+    "Noto Sans SC", sans-serif;
+  --lx-font-display: "Space Grotesk", var(--lx-cjk);
+  --lx-font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    var(--lx-cjk);
+  --lx-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
+    Consolas, var(--lx-cjk);
+
+  /* ---- §3 形状 / 空间 / 动效 ------------------------------------------ */
+  --lx-radius-control: 4px;  /* 控件 */
+  --lx-radius-panel: 8px;    /* 面板与卡片 */
+  --lx-radius-tag: 2px;      /* Tag / 方形滑杆手柄 */
+
+  --lx-space-1: 4px;
+  --lx-space-2: 8px;
+  --lx-space-3: 12px;
+  --lx-space-4: 16px;   /* 面板内边距 */
+  --lx-space-5: 20px;
+  --lx-space-6: 24px;   /* 分区间距 */
+
+  --lx-ease: cubic-bezier(.22, .61, .36, 1);
+  --lx-dur-hover: 140ms;
+  --lx-dur-state: 220ms;
+  --lx-dur-enter: 360ms;
+
+  /* 面板边缘导光（中性蓝白，不用彩色） */
+  --lx-panel-edge: rgba(190, 215, 255, .05);
+  --lx-panel-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+  --lx-panel-inset-shadow: inset 0 1px 3px rgba(0, 0, 0, .5);
+
+  /* 滚动条 */
+  --lx-scroll-thumb: #232D4A;
+  --lx-scroll-thumb-hover: #2F3B60;
+}
+
+/* =============================================================================
+   全局细滚动条（§3）— 恢复可见（旧代码全局隐藏了滚动条，属可用性缺陷）
+   ============================================================================= */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--lx-scroll-thumb) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--lx-scroll-thumb);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--lx-scroll-thumb-hover);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* =============================================================================
+   焦点 / 选区（§3）
+   ============================================================================= */
+:focus-visible {
+  outline: 1px solid var(--lx-cyan);
+  outline-offset: 2px;
+}
+::selection {
+  background: rgba(63, 216, 240, .28);
+  color: var(--lx-text-1);
+}
+
+/* =============================================================================
+   prefers-reduced-motion 全局降级（§0.5 / §3）
+   ============================================================================= */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* =============================================================================
+   §5 全局工具类
+   ============================================================================= */
+
+/* ---- .lx-panel：面板表面（bg-2、发丝边、边缘导光、柔和投影）---------- */
+.lx-panel {
+  position: relative;
+  background: var(--lx-bg-2);
+  border: 1px solid var(--lx-line);
+  border-radius: var(--lx-radius-panel);
+  box-shadow: var(--lx-panel-shadow);
+  padding: var(--lx-space-4);
+}
+/* 顶部 1px 亮边 + 从顶部渗入的极淡冷光（像侧光亚克力板，不用彩色）*/
+.lx-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    var(--lx-panel-edge) 0%,
+    rgba(190, 215, 255, 0) 40%
+  );
+  box-shadow: inset 0 1px 0 rgba(210, 228, 255, .07);
+}
+
+/* ---- .lx-panel-inset：凹陷区（bg-1、内阴影、4px）--------------------- */
+.lx-panel-inset {
+  background: var(--lx-bg-1);
+  border: 1px solid var(--lx-line);
+  border-radius: var(--lx-radius-control);
+  box-shadow: var(--lx-panel-inset-shadow);
+}
+
+/* ---- .lx-eyebrow：分区眉标容器 -------------------------------------- */
+.lx-eyebrow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--lx-space-3);
+  font-size: 11px;
+  line-height: 1.4;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--lx-text-2);
+  font-family: var(--lx-font-display);
+  font-weight: 500;
+}
+/* 眉标英文代码（mono、text-3、右侧）*/
+.lx-eyebrow-code {
+  font-family: var(--lx-font-mono);
+  font-weight: 400;
+  color: var(--lx-text-3);
+  letter-spacing: 0.14em;
+  white-space: nowrap;
+  flex: none;
+}
+
+/* ---- .lx-data：等宽数字 --------------------------------------------- */
+.lx-data {
+  font-family: var(--lx-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* ---- .lx-divider：1px 发丝分割线 ------------------------------------ */
+.lx-divider {
+  height: 1px;
+  border: 0;
+  margin: var(--lx-space-4) 0;
+  background: var(--lx-line);
+}
+
+/* ---- .lx-viewport：3D / 预览视口容器（bg-1、HUD 四角括角）----------- */
+.lx-viewport {
+  position: relative;
+  background: var(--lx-bg-1);
+  border: 1px solid var(--lx-line);
+  border-radius: var(--lx-radius-panel);
+  overflow: hidden;
+}
+/* HUD 四角括角：单个伪元素铺满 8px 内缩区，用 8 段 1px 线性渐变拼出四个 12px
+   的 L 形括角（像取景器）。放在伪元素自身背景上，永不与页面样式冲突。
+   变量 --lx-hud-corner 控制颜色，hover 时切到 cyan（无循环动画）。 */
+.lx-viewport {
+  --lx-hud-corner: var(--lx-line-bright);
+}
+.lx-viewport::before {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  pointer-events: none;
+  z-index: 2;
+  background-repeat: no-repeat;
+  /* hover 颜色瞬时切换（无循环动画，符合 §4 克制纪律）*/
+  /* 8 段：每角 竖 + 横 各一段 */
+  background-image:
+    linear-gradient(var(--lx-hud-corner), var(--lx-hud-corner)), /* 左上竖 */
+    linear-gradient(var(--lx-hud-corner), var(--lx-hud-corner)), /* 左上横 */
+    linear-gradient(var(--lx-hud-corner), var(--lx-hud-corner)), /* 右上竖 */
+    linear-gradient(var(--lx-hud-corner), var(--lx-hud-corner)), /* 右上横 */
+    linear-gradient(var(--lx-hud-corner), var(--lx-hud-corner)), /* 左下竖 */
+    linear-gradient(var(--lx-hud-corner), var(--lx-hud-corner)), /* 左下横 */
+    linear-gradient(var(--lx-hud-corner), var(--lx-hud-corner)), /* 右下竖 */
+    linear-gradient(var(--lx-hud-corner), var(--lx-hud-corner)); /* 右下横 */
+  background-size:
+    1px 12px, 12px 1px,   /* 左上 */
+    1px 12px, 12px 1px,   /* 右上 */
+    1px 12px, 12px 1px,   /* 左下 */
+    1px 12px, 12px 1px;   /* 右下 */
+  background-position:
+    left top, left top,                              /* 左上 */
+    right top, right top,                            /* 右上 */
+    left bottom, left bottom,                        /* 左下 */
+    right bottom, right bottom;                      /* 右下 */
+}
+/* hover 时四角括角亮起为 cyan */
+.lx-viewport:hover {
+  --lx-hud-corner: var(--lx-cyan);
+}
+
+/* ---- .lx-viewport-hud：视口内叠加的角落读数条 ---------------------- */
+.lx-viewport-hud {
+  position: absolute;
+  font-family: var(--lx-font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: var(--lx-text-3);
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* ---- .lx-empty：空状态（居中、text-3、图标上方极淡暖背光径向光晕）-- */
+.lx-empty {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: var(--lx-space-3);
+  color: var(--lx-text-3);
+  padding: var(--lx-space-6);
+}
+.lx-empty::before {
+  content: "";
+  position: absolute;
+  top: 28%;
+  left: 50%;
+  width: 200px;
+  height: 200px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  background: radial-gradient(
+    circle,
+    rgba(255, 190, 110, 0.10) 0%,
+    rgba(255, 190, 110, 0) 68%
+  );
+}
+
+/* ---- .lx-rise：入场动画（opacity + translateY），可配 --lx-rise-delay -- */
+.lx-rise {
+  opacity: 0;
+  animation: lx-rise var(--lx-dur-enter) var(--lx-ease) forwards;
+  animation-delay: var(--lx-rise-delay, 0ms);
+}
+@keyframes lx-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

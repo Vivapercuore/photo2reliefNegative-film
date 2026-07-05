@@ -32,6 +32,7 @@ import {
 } from './calibration';
 import CalibrationTable from './CalibrationTable';
 import CalibrationPicker from './CalibrationPicker';
+import PageNav from '../components/PageNav';
 import colorWheelUrl from './colorwheel.png';
 import './ColorCmyk.css';
 
@@ -369,18 +370,16 @@ const ColorCmyk: React.FC = () => {
 
   return (
     <div className="colorcmyk">
-      <div className="page-nav">
-        <Button type="text" size="small" onClick={() => navigate('/')}>
-          ← 返回首页
-        </Button>
-        <span className="page-nav-title">彩色照片转CMYK透光画（厚度控制明度 · 测试版）</span>
-      </div>
+      <PageNav title="彩色照片转 CMYK 透光画" code="CMYK" />
 
       <div className="colorcmyk-body">
         <div className="colorcmyk-panel">
           <List size="large" header="选择彩色照片，生成 CMYK 透光彩画">
             <List.Item key="calibration">
-              <div className="title">耗材校准（必选）</div>
+              <div className="lx-eyebrow">
+                <span>耗材校准 · 必选</span>
+                <span className="lx-eyebrow-code">CALIBRATION</span>
+              </div>
               <div className="describe">
                 先选一套耗材校准——不同耗材的颜色与透光不同，选对了预览才接近成品。
                 {cal.calibrated ? (cal.label ? ` 当前：预设「${cal.label}」。` : ' 当前：自定义校准。') : ''}
@@ -425,7 +424,10 @@ const ColorCmyk: React.FC = () => {
             ) : (
               <>
                 <List.Item key="upload">
-                  <div className="title">选择图像</div>
+                  <div className="lx-eyebrow">
+                    <span>选择图像</span>
+                    <span className="lx-eyebrow-code">INPUT</span>
+                  </div>
                   <div className="describe">支持 jpg/png，全部在本地浏览器处理，不上传服务器。</div>
                   <Upload
                     drag
@@ -448,12 +450,12 @@ const ColorCmyk: React.FC = () => {
                   <>
                 <List.Item key="preview">
                   <div
-                    className="colorcmyk-collapse-head"
+                    className="colorcmyk-collapse-head lx-eyebrow"
                     onClick={() => setPreviewOpen((o) => !o)}
                   >
-                    <span className="title">原图 / 预览图</span>
-                    <span className="colorcmyk-collapse-icon">
-                      {previewOpen ? '收起 ▲' : '展开 ▼'}
+                    <span>原图 / 预览图</span>
+                    <span className="colorcmyk-collapse-icon lx-eyebrow-code">
+                      {previewOpen ? 'PREVIEW ▲' : 'PREVIEW ▼'}
                     </span>
                   </div>
                   {previewOpen ? (
@@ -498,7 +500,10 @@ const ColorCmyk: React.FC = () => {
                 </List.Item>
 
                 <List.Item key="dot">
-                  <div className="title">像素点尺寸 (mm)</div>
+                  <div className="lx-eyebrow">
+                    <span>像素点尺寸</span>
+                    <span className="lx-eyebrow-code">DOT · MM</span>
+                  </div>
                   <div className="describe">
                     越小越细腻、像素越多、生成越慢。建议 0.4~0.8mm。
                   </div>
@@ -516,7 +521,10 @@ const ColorCmyk: React.FC = () => {
                 </List.Item>
 
                 <List.Item key="size">
-                  <div className="title">成像区长边长度 (mm)</div>
+                  <div className="lx-eyebrow">
+                    <span>成像区长边长度</span>
+                    <span className="lx-eyebrow-code">SIZE · MM</span>
+                  </div>
                   <div className="describe">成品图像区长边的物理尺寸，短边按图片比例自动缩放。</div>
                   <div className="describe">
                     常见照片尺寸（点击设置长边）：
@@ -544,22 +552,25 @@ const ColorCmyk: React.FC = () => {
                 </List.Item>
 
                 <List.Item key="thickness">
-                  <div className="title">模型厚度</div>
+                  <div className="lx-eyebrow">
+                    <span>模型厚度</span>
+                    <span className="lx-eyebrow-code">THICKNESS</span>
+                  </div>
                   <div className="describe">
                     总厚度与各色最高厚度。按 {LAYER_MM}mm 缩放总厚度：调薄更省料、更透亮（饱和度降低），
                     调厚显色更浓郁（到色域上限为止）。白色底层与顶部白色盖层均固定、计入叠层。
                   </div>
                   {stats ? (
                     <>
-                      <div style={{ margin: '6px 0 2px', fontSize: 15 }}>
-                        总厚度{' '}
-                        <b style={{ fontSize: 17 }}>
+                      <div className="colorcmyk-total">
+                        <span className="colorcmyk-total-label">总厚度</span>
+                        <b className="colorcmyk-total-value lx-data">
                           {((baseLayers + stats.maxLevelsTotal) * LAYER_MM).toFixed(2)} mm
                         </b>
-                        <span style={{ marginLeft: 8, color: 'var(--color-text-3)', fontSize: 12 }}>
-                          白底 {(baseLayers * LAYER_MM).toFixed(2)} + 叠层最高{' '}
-                          {(stats.maxLevelsTotal * LAYER_MM).toFixed(2)}（含顶部白，共{' '}
-                          {baseLayers + stats.maxLevelsTotal} 层）
+                        <span className="colorcmyk-total-note">
+                          白底 <span className="lx-data">{(baseLayers * LAYER_MM).toFixed(2)}</span> + 叠层最高{' '}
+                          <span className="lx-data">{(stats.maxLevelsTotal * LAYER_MM).toFixed(2)}</span>（含顶部白，共{' '}
+                          <span className="lx-data">{baseLayers + stats.maxLevelsTotal}</span> 层）
                         </span>
                       </div>
                       <div className="colorcmyk-counts">
@@ -572,12 +583,12 @@ const ColorCmyk: React.FC = () => {
                                 className="colorcmyk-swatch"
                                 style={{ background: `rgb(${p.rgb.join(',')})` }}
                               />
-                              {p.label} 最厚 {(layers * LAYER_MM).toFixed(2)}mm（{layers} 层）
+                              {p.label} 最厚 <span className="lx-data">{(layers * LAYER_MM).toFixed(2)}mm（{layers} 层）</span>
                             </span>
                           );
                         })}
                       </div>
-                      <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div className="colorcmyk-thickness-scale">
                         <span>缩放总厚度</span>
                         <InputNumber
                           style={{ width: 170 }}
@@ -606,7 +617,10 @@ const ColorCmyk: React.FC = () => {
                 </List.Item>
 
                 <List.Item key="base">
-                  <div className="title">白色底层（扩散层）层数</div>
+                  <div className="lx-eyebrow">
+                    <span>白色底层 · 扩散层</span>
+                    <span className="lx-eyebrow-code">BASE</span>
+                  </div>
                   <div className="describe">
                     匀化背光、避免纯白区镂空；越厚整体越暗。建议 1~2 层。
                   </div>
@@ -627,7 +641,10 @@ const ColorCmyk: React.FC = () => {
                 </List.Item>
 
                 <List.Item key="top">
-                  <div className="title">顶部白色盖层（层数）</div>
+                  <div className="lx-eyebrow">
+                    <span>顶部白色盖层</span>
+                    <span className="lx-eyebrow-code">TOP · WHITE</span>
+                  </div>
                   <div className="describe">
                     <b>每一列</b>都在 C/M/Y 之上、观看面均匀铺这么多层白，让顶面始终是白色（盖住纯品红/黄/青露色）。
                     其吸收已计入解算，颜色仍准。越厚遮盖越实，但整体越暗、偏暖（白料蓝光吸收最强）。
@@ -647,7 +664,10 @@ const ColorCmyk: React.FC = () => {
                 </List.Item>
 
                 <List.Item key="border">
-                  <div className="title">边框</div>
+                  <div className="lx-eyebrow">
+                    <span>边框</span>
+                    <span className="lx-eyebrow-code">BORDER</span>
+                  </div>
                   <div className="colorcmyk-switch">
                     <Switch
                       checked={addBorder}
@@ -656,8 +676,8 @@ const ColorCmyk: React.FC = () => {
                     <span>在四周加一圈白色边框（高度与最高像素一致）</span>
                   </div>
                   {addBorder ? (
-                    <div style={{ marginTop: 10 }}>
-                      <span style={{ marginRight: 8 }}>边框宽度</span>
+                    <div className="colorcmyk-border-width">
+                      <span>边框宽度</span>
                       <InputNumber
                         style={{ width: 150 }}
                         mode="button"
@@ -675,19 +695,22 @@ const ColorCmyk: React.FC = () => {
 
                 {stats ? (
                   <List.Item key="stats">
-                    <div className="title">生成信息</div>
+                    <div className="lx-eyebrow">
+                      <span>生成信息</span>
+                      <span className="lx-eyebrow-code">STATS</span>
+                    </div>
                     <div className="colorcmyk-stats">
                       <Tag color="arcoblue">
-                        逻辑像素 {stats.cols} × {stats.rows}
+                        逻辑像素 <span className="lx-data">{stats.cols} × {stats.rows}</span>
                       </Tag>
                       <Tag color="green">
-                        物理尺寸 {stats.widthMm.toFixed(1)} × {stats.heightMm.toFixed(1)} mm
+                        物理尺寸 <span className="lx-data">{stats.widthMm.toFixed(1)} × {stats.heightMm.toFixed(1)} mm</span>
                       </Tag>
                       <Tag color="purple">
-                        厚度 {totalMinMm.toFixed(2)} ~ {totalMaxMm.toFixed(2)} mm
+                        厚度 <span className="lx-data">{totalMinMm.toFixed(2)} ~ {totalMaxMm.toFixed(2)} mm</span>
                       </Tag>
                       <Tag color={triangles > TRIANGLE_WARN ? 'red' : 'gray'}>
-                        三角形 {(triangles / 1000).toFixed(0)}k
+                        三角形 <span className="lx-data">{(triangles / 1000).toFixed(0)}k</span>
                       </Tag>
                     </div>
                     {triangles > TRIANGLE_WARN ? (
@@ -702,7 +725,7 @@ const ColorCmyk: React.FC = () => {
                             className="colorcmyk-swatch"
                             style={{ background: `rgb(${p.rgb.join(',')})` }}
                           />
-                          {p.label} 平均墨量 {(stats.avgInk[i] * 100).toFixed(1)}%
+                          {p.label} 平均墨量 <span className="lx-data">{(stats.avgInk[i] * 100).toFixed(1)}%</span>
                         </span>
                       ))}
                     </div>
@@ -710,7 +733,10 @@ const ColorCmyk: React.FC = () => {
                 ) : null}
 
                 <List.Item key="export">
-                  <div className="title">导出</div>
+                  <div className="lx-eyebrow">
+                    <span>导出</span>
+                    <span className="lx-eyebrow-code">EXPORT</span>
+                  </div>
                   <div className="describe">
                     模型随参数自动生成，右侧实时预览。导出 4 色 3MF，料表为 青/品红/黄/白。
                   </div>
@@ -732,54 +758,22 @@ const ColorCmyk: React.FC = () => {
           </List>
         </div>
 
-        <div className="colorcmyk-viewer" style={{ position: 'relative' }}>
+        <div className="colorcmyk-viewer lx-viewport">
           {viewObject ? (
-            <div
-              style={{
-                position: 'absolute',
-                top: 10,
-                left: 10,
-                zIndex: 5,
-                display: 'flex',
-                gap: 6,
-                flexWrap: 'wrap',
-                alignItems: 'center',
-                background: 'rgba(20,20,20,0.55)',
-                padding: '6px 8px',
-                borderRadius: 8,
-              }}
-            >
-              <span style={{ color: '#ccc', fontSize: 12, marginRight: 2 }}>显示颜色</span>
+            <div className="colorcmyk-legend">
+              <span className="colorcmyk-legend-label">显示颜色</span>
               {CMYK_PALETTE.map((p) => {
                 const off = !!hidden[p.id];
                 return (
                   <button
                     key={p.id}
+                    className={`colorcmyk-legend-btn${off ? ' is-off' : ''}`}
                     onClick={() => setHidden((h) => ({ ...h, [p.id]: !h[p.id] }))}
                     title={off ? `显示${p.label}` : `隐藏${p.label}`}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 5,
-                      cursor: 'pointer',
-                      border: `1px solid ${off ? '#555' : '#aaa'}`,
-                      background: off ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.16)',
-                      color: off ? '#888' : '#fff',
-                      borderRadius: 6,
-                      padding: '2px 8px',
-                      fontSize: 12,
-                      textDecoration: off ? 'line-through' : 'none',
-                    }}
                   >
                     <i
-                      style={{
-                        width: 11,
-                        height: 11,
-                        borderRadius: 2,
-                        background: `rgb(${p.rgb.join(',')})`,
-                        outline: '1px solid rgba(255,255,255,0.4)',
-                        opacity: off ? 0.4 : 1,
-                      }}
+                      className="colorcmyk-legend-chip"
+                      style={{ background: `rgb(${p.rgb.join(',')})` }}
                     />
                     {p.label}
                   </button>
@@ -787,14 +781,18 @@ const ColorCmyk: React.FC = () => {
               })}
             </div>
           ) : null}
-          <Spin loading={generating} tip="生成模型中…" style={{ width: '100%', height: '100%' }}>
+          {viewObject ? (
+            <div className="lx-viewport-hud colorcmyk-hud">
+              CMYK · {(triangles / 1000).toFixed(0)}k tris
+            </div>
+          ) : null}
+          <Spin loading={generating} tip="生成模型中…" className="colorcmyk-spin">
             {viewObject ? (
               <ModelViewer object={viewObject} className="colorcmyk-3d" revision={hidden} />
             ) : (
-              <div className="colorcmyk-empty">
-                选择图片、设置参数后
-                <br />
-                在此预览四色堆叠效果
+              <div className="colorcmyk-empty lx-empty">
+                <div className="colorcmyk-empty-title">四色堆叠预览</div>
+                <div>选择图片、设置参数后，在此预览青·品红·黄·白的堆叠透光效果</div>
               </div>
             )}
           </Spin>

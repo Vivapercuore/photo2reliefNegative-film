@@ -15,8 +15,12 @@ interface Props {
   className?: string;
 }
 
-const CUT_COLOR = '#d8d8d8';
-const ENGRAVE_FALLBACK = '#8a8a8a';
+// Cut paths use the primary interaction color (--lx-cyan); uncolored engrave
+// paths fall back to the dimmer bright-line color (--lx-line-bright) so they
+// still read against the --lx-bg-1 canvas without competing with the cut color.
+const CUT_COLOR = '#3FD8F0';
+const ENGRAVE_FALLBACK = '#2A3556';
+const CANVAS_BG = '#0A0F1A';
 const PADDING = 24; // px border kept around the drawing when auto-fitting
 
 /**
@@ -100,6 +104,8 @@ const PathPreview: React.FC<Props> = ({ model, plateSel, flipY, showEngraveColor
       }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = CANVAS_BG;
+      ctx.fillRect(0, 0, W, H);
 
       if (!Number.isFinite(minX) || maxX <= minX || maxY <= minY) return;
 
