@@ -42,7 +42,7 @@ const Row: React.FC<{
       onChange={onChange}
       onCommit={onCommit}
     />
-    <span className="ce-val">{(fmt || ((v) => v.toFixed(2)))(value)}</span>
+    <span className="ce-val lx-data">{(fmt || ((v) => v.toFixed(2)))(value)}</span>
   </div>
 );
 
@@ -87,9 +87,9 @@ const ColorEditor: React.FC<Props> = ({ value, onChange, primaries }) => {
         const c = rgbStr(p.rgb);
         return (
           <div className="ce-section ce-prim" key={p.id}>
-            <div className="ce-prim-head">
+            <div className="ce-prim-head lx-eyebrow">
               <i className="ce-swatch" style={{ background: c }} />
-              {p.label}
+              <span>{p.label}</span>
             </div>
             <Row
               label="饱和度"

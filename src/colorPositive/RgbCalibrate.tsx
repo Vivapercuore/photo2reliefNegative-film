@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   List,
   Input,
@@ -34,7 +33,9 @@ import {
 import RgbCalibrationTable from './RgbCalibrationTable';
 import RgbCalibrationPicker from './RgbCalibrationPicker';
 import PhotoDropZone from '../colorCmyk/PhotoDropZone';
+import PageNav from '../components/PageNav';
 import '../colorCmyk/CmykCalibrate.css';
+import './RgbCalibrationTable.css';
 
 function saveBlob(data: BlobPart, filename: string) {
   const blob = new Blob([data]);
@@ -53,7 +54,6 @@ const rowHex = (id: keyof typeof PRIMARY_NOMINAL) =>
   '#' + PRIMARY_NOMINAL[id].map((v) => v.toString(16).padStart(2, '0')).join('');
 
 const RgbCalibrate: React.FC = () => {
-  const navigate = useNavigate();
   useDocumentTitle('RGB 耗材校准');
 
   const [exporting, setExporting] = useState(false);
@@ -317,18 +317,16 @@ const RgbCalibrate: React.FC = () => {
 
   return (
     <div className="cmykcal rgbcal">
-      <div className="page-nav">
-        <Button type="text" size="small" onClick={() => navigate('/color-positive')}>
-          ← 返回正片模块
-        </Button>
-        <span className="page-nav-title">RGB 耗材校准（反射观看）</span>
-      </div>
+      <PageNav title="RGB 耗材校准" code="RGB·CAL" backTo="/color-positive" />
 
       <div className="cmykcal-body">
         <div className="cmykcal-grid">
           <List className="cmykcal-col" size="large" header="当前校准 · 参数与预览">
             <List.Item key="status">
-              <div className="title">当前校准</div>
+              <div className="lx-eyebrow rgbcal-eyebrow">
+                <span>当前校准</span>
+                <span className="lx-eyebrow-code">STATUS</span>
+              </div>
               <div className="cmykcal-status">
                 {current.calibrated ? (
                   <Tag color="green">
@@ -343,7 +341,7 @@ const RgbCalibrate: React.FC = () => {
                 )}
               </div>
               <div className="describe">
-                每卷耗材打印出的实际颜色都偏离理想原色（红更暗、蓝更脏），偏色就来自这里。
+                反射观看：每卷耗材打印出的实际颜色都偏离理想原色（红更暗、蓝更脏），偏色就来自这里。
                 打印下面的校准片实测各原色真实显色，预览与成品才一致。也可在下方手动微调参数。
               </div>
               <RgbCalibrationPicker
@@ -355,7 +353,8 @@ const RgbCalibrate: React.FC = () => {
               <RgbCalibrationTable cal={current} showTable={false} />
               <div className="cmykcal-editbox">
                 <div className="cmykcal-edit-title">
-                  饱和度还原 {(current.chromaGain ?? 1).toFixed(1)}×（抵消手机拍照掉色）
+                  饱和度还原 <span className="lx-data">{(current.chromaGain ?? 1).toFixed(1)}×</span>
+                  （抵消手机拍照掉色）
                 </div>
                 <div className="describe">
                   拍照取色会整体掉饱和度。此项按<b>统一倍率</b>把各原色的彩度放大回去——只改鲜艳度、
@@ -371,7 +370,7 @@ const RgbCalibrate: React.FC = () => {
                     value={current.chromaGain ?? 1}
                     onChange={setChromaGain}
                   />
-                  <span className="rgbcal-sat-val">{(current.chromaGain ?? 1).toFixed(1)}×</span>
+                  <span className="rgbcal-sat-val lx-data">{(current.chromaGain ?? 1).toFixed(1)}×</span>
                   <Button
                     size="mini"
                     onClick={() => setChromaGain(autoChromaGain(current.primaries))}
@@ -382,7 +381,8 @@ const RgbCalibrate: React.FC = () => {
               </div>
               <div className="cmykcal-editbox">
                 <div className="cmykcal-edit-title">
-                  叠色补偿 Yule-Nielsen n = {ynFactorOf(current).toFixed(1)}（相邻点光学混色）
+                  叠色补偿 Yule-Nielsen n ={' '}
+                  <span className="lx-data">{ynFactorOf(current).toFixed(1)}</span>（相邻点光学混色）
                 </div>
                 <div className="describe">
                   并排的点会因光在层间侧向扩散而比线性平均<b>更暗</b>，此项按 Yule-Nielsen 半调模型
@@ -398,7 +398,7 @@ const RgbCalibrate: React.FC = () => {
                     value={ynFactorOf(current)}
                     onChange={setYn}
                   />
-                  <span className="rgbcal-sat-val">{ynFactorOf(current).toFixed(1)}</span>
+                  <span className="rgbcal-sat-val lx-data">{ynFactorOf(current).toFixed(1)}</span>
                   <Button size="mini" onClick={() => setYn(DEFAULT_YN)}>
                     默认
                   </Button>
@@ -430,7 +430,10 @@ const RgbCalibrate: React.FC = () => {
 
           <List className="cmykcal-col" size="large" header="校准流程">
             <List.Item key="step1">
-              <div className="title">① 分色打印校准片</div>
+              <div className="lx-eyebrow rgbcal-eyebrow">
+                <span>① 分色打印校准片</span>
+                <span className="lx-eyebrow-code">STEP 1</span>
+              </div>
               <div className="describe">
                 导出的 3MF 含 <b>5 个打印盘</b>（红/绿/蓝/黑/白各一盘）。在 Bambu Studio 里逐盘选择、
                 逐个换上对应耗材打印——<b>全程不换色、无需 AMS</b>。每色一条实心色块，层高 {CAL_LAYER_MM}mm、
@@ -451,7 +454,7 @@ const RgbCalibrate: React.FC = () => {
                         width={248}
                         height={rh - 3}
                         fill={rowHex(row)}
-                        stroke="#666"
+                        stroke="var(--lx-line-bright)"
                         strokeWidth="0.5"
                       />
                       {i < CAL_ROWS.length - 1
@@ -460,7 +463,7 @@ const RgbCalibrate: React.FC = () => {
                               key={k}
                               d={`M ${6 + fx * 248 - 5} ${y + rh} l 4 4 l 2 0 l 4 -4`}
                               fill="none"
-                              stroke="#999"
+                              stroke="var(--lx-text-3)"
                               strokeWidth="1"
                             />
                           ))
@@ -478,7 +481,10 @@ const RgbCalibrate: React.FC = () => {
             </List.Item>
 
             <List.Item key="step2">
-              <div className="title">② 反射光下拍照并载入</div>
+              <div className="lx-eyebrow rgbcal-eyebrow">
+                <span>② 反射光下拍照并载入</span>
+                <span className="lx-eyebrow-code">STEP 2</span>
+              </div>
               <div className="describe">
                 把拼好的整片平放在<b>均匀的环境光/柔光</b>下（避免直射强光、闪光灯与彩色反光），
                 建议关闭手机自动白平衡、锁定曝光，正对拍一张，载入到这里。
@@ -489,7 +495,10 @@ const RgbCalibrate: React.FC = () => {
 
             {photoUrl ? (
               <List.Item key="step3">
-                <div className="title">③ 点击拼接块四角配准</div>
+                <div className="lx-eyebrow rgbcal-eyebrow">
+                  <span>③ 点击拼接块四角配准</span>
+                  <span className="lx-eyebrow-code">STEP 3</span>
+                </div>
                 <div className="describe">
                   依次点击<b>五色拼接块</b>的四个角：红行左上 → 红行右上 → 白行右下 → 白行左下。
                   点满四个后会叠加绿色采样点（每色一个），第五次点击重新开始。
@@ -497,7 +506,7 @@ const RgbCalibrate: React.FC = () => {
                 <canvas ref={dispCanvasRef} className="cmykcal-canvas" onClick={onCanvasClick} />
                 <div style={{ marginTop: 10 }}>
                   <Button type="primary" onClick={onFit} disabled={corners.length !== 4}>
-                    拟合校准（{corners.length}/4 角）
+                    拟合校准（<span className="lx-data">{corners.length}/4</span> 角）
                   </Button>
                 </div>
               </List.Item>
@@ -505,7 +514,10 @@ const RgbCalibrate: React.FC = () => {
 
             {fitted ? (
               <List.Item key="step4">
-                <div className="title">④ 确认 · 命名保存到本地</div>
+                <div className="lx-eyebrow rgbcal-eyebrow">
+                  <span>④ 确认 · 命名保存到本地</span>
+                  <span className="lx-eyebrow-code">STEP 4</span>
+                </div>
                 <div className="describe">
                   下方是拟合结果（各原色实测显色），与白参考对比看是否合理。
                   给这组耗材起个名字保存到本地，之后可在「我保存的」里快捷点选。

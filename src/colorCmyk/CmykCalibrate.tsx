@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   List,
   Input,
@@ -38,6 +37,7 @@ import CalibrationTable from './CalibrationTable';
 import CalibrationPicker from './CalibrationPicker';
 import PhotoDropZone from './PhotoDropZone';
 import ArtworkCorrect from './ArtworkCorrect';
+import PageNav from '../components/PageNav';
 import './CmykCalibrate.css';
 
 // TODO: 校准模型链接由用户提供后填入
@@ -70,7 +70,6 @@ const toHex = (r: number, g: number, b: number) =>
     .join('');
 
 const CmykCalibrate: React.FC = () => {
-  const navigate = useNavigate();
   useDocumentTitle('CMYK 耗材校准');
 
   const [strips, setStrips] = useState<(StripState | null)[]>([null, null, null, null]);
@@ -374,18 +373,16 @@ const CmykCalibrate: React.FC = () => {
 
   return (
     <div className="cmykcal">
-      <div className="page-nav">
-        <Button type="text" size="small" onClick={() => navigate('/color-cmyk')}>
-          ← 返回 CMYK 模块
-        </Button>
-        <span className="page-nav-title">CMYK 耗材校准</span>
-      </div>
+      <PageNav title="CMYK 耗材校准" code="CMYK·CAL" backTo="/color-cmyk" />
 
       <div className="cmykcal-body">
         <div className="cmykcal-grid">
           <List className="cmykcal-col" size="large" header="当前校准 · 参数与预览">
             <List.Item key="status">
-              <div className="title">当前校准</div>
+              <div className="lx-eyebrow">
+                <span>当前校准</span>
+                <span className="lx-eyebrow-code">CURRENT</span>
+              </div>
               <div className="cmykcal-status">
                 {current.calibrated ? (
                   <Tag color="green">
@@ -409,7 +406,10 @@ const CmykCalibrate: React.FC = () => {
               />
               <CalibrationTable cal={current} showTable={false} />
               <div className="cmykcal-editbox">
-                <div className="cmykcal-edit-title">手动微调参数</div>
+                <div className="lx-eyebrow cmykcal-edit-title">
+                  <span>手动微调参数</span>
+                  <span className="lx-eyebrow-code">MANUAL</span>
+                </div>
                 <div className="cmykcal-warn">⚠ 手动修改会直接改变作画的颜色还原，请谨慎操作。</div>
                 <CalibrationTable cal={current} showSwatches={false} onChange={onEditCurrent} />
                 <div className="cmykcal-name-row">
@@ -455,7 +455,10 @@ const CmykCalibrate: React.FC = () => {
             {mode === 'strip' ? (
             <>
             <List.Item key="step1">
-              <div className="title">① 获取并打印校准条</div>
+              <div className="lx-eyebrow cmykcal-step">
+                <span>① 获取并打印校准条</span>
+                <span className="lx-eyebrow-code">STEP 01</span>
+              </div>
               <div className="describe">
                 校准条是一条 <b>7 阶厚度楔形条</b>：第 1 格 0.08mm，每格加一层，到第 7 格 0.56mm
                 （0.08mm 步进）。请用 <b>0.08mm 层高</b>打印，四种耗材各打印一条（青 C / 品红 M /
@@ -473,7 +476,16 @@ const CmykCalibrate: React.FC = () => {
               {/* 单条 7 阶楔形示意 + 方向凸耳 */}
               <svg className="cmykcal-guide" viewBox="0 0 300 90" xmlns="http://www.w3.org/2000/svg">
                 {/* outer strip frame */}
-                <rect x="8" y="14" width="284" height="44" rx="5" fill="#222" stroke="#666" strokeWidth="1.5" />
+                <rect
+                  x="8"
+                  y="14"
+                  width="284"
+                  height="44"
+                  rx="5"
+                  fill="var(--lx-bg-1)"
+                  stroke="var(--lx-line-bright)"
+                  strokeWidth="1.5"
+                />
                 {/* 7 wedge cells, neutral grey, opacity ramp 0.15 → 0.9 */}
                 {CAL_LAYERS.map((_, j) => {
                   const cellW = 280 / N_STEPS;
@@ -483,20 +495,32 @@ const CmykCalibrate: React.FC = () => {
                   return (
                     <g key={j}>
                       <rect x={x} y="16" width={cellW - 1} height="40" fill="#9aabbb" opacity={op} />
-                      <text x={cx} y="41" fill="#fff" fontSize="12" textAnchor="middle" opacity={0.85}>
+                      <text
+                        x={cx}
+                        y="41"
+                        fill="var(--lx-text-1)"
+                        fontSize="12"
+                        textAnchor="middle"
+                        opacity={0.85}
+                      >
                         {j + 1}
                       </text>
                     </g>
                   );
                 })}
                 {/* half-circle orientation ear on the lower edge, offset left */}
-                <path d="M 40 58 a 10 10 0 0 0 20 0 z" fill="#222" stroke="#666" strokeWidth="1.5" />
+                <path
+                  d="M 40 58 a 10 10 0 0 0 20 0 z"
+                  fill="var(--lx-bg-1)"
+                  stroke="var(--lx-line-bright)"
+                  strokeWidth="1.5"
+                />
                 {/* press-here hint under the ear (拍照时手指压凸耳压平校准条) */}
-                <text x="50" y="86" fill="#999" fontSize="9" textAnchor="middle">
+                <text x="50" y="86" fill="var(--lx-text-3)" fontSize="9" textAnchor="middle">
                   手按此处
                 </text>
                 {/* thickness caption */}
-                <text x="150" y="80" fill="#999" fontSize="11" textAnchor="middle">
+                <text x="150" y="80" fill="var(--lx-text-3)" fontSize="11" textAnchor="middle">
                   0.08 → 0.56 mm（每格 +0.08）
                 </text>
               </svg>
@@ -510,7 +534,10 @@ const CmykCalibrate: React.FC = () => {
             </List.Item>
 
             <List.Item key="step2">
-              <div className="title">② 逐条背光拍照 · 对准 · 采样</div>
+              <div className="lx-eyebrow cmykcal-step">
+                <span>② 逐条背光拍照 · 对准 · 采样</span>
+                <span className="lx-eyebrow-code">STEP 02</span>
+              </div>
               <div className="describe">
                 把校准条平放在灯板/背光上，条的<b>上下两侧留出背光</b>（作白参考）。建议关闭自动
                 白平衡、锁定曝光，四条各拍一张。拍照时手指按住半圆凸耳固定校准条，别把手伸进测光格和白参考区域。
@@ -578,7 +605,7 @@ const CmykCalibrate: React.FC = () => {
                       value={activeStrip.whiteOff}
                       onChange={onWhiteOff}
                     />
-                    <span className="cmykcal-slider-val">{activeStrip.whiteOff.toFixed(2)}</span>
+                    <span className="cmykcal-slider-val lx-data">{activeStrip.whiteOff.toFixed(2)}</span>
                   </div>
                   <div style={{ marginTop: 6 }}>
                     <Button type="primary" onClick={onSample}>
@@ -606,7 +633,10 @@ const CmykCalibrate: React.FC = () => {
             </List.Item>
 
             <List.Item key="step3">
-              <div className="title">③ 拟合 · 确认 · 保存</div>
+              <div className="lx-eyebrow cmykcal-step">
+                <span>③ 拟合 · 确认 · 保存</span>
+                <span className="lx-eyebrow-code">STEP 03</span>
+              </div>
               <div className="describe">
                 <b>采完任意一条即可拟合</b>：本次拟合更新已采样耗材的 α，
                 <b>未采样的沿用「当前校准」的数值</b>——可逐条补测、随测随存（拟合以点击时的当前校准为底）。

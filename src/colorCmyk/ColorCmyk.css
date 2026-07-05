@@ -9,18 +9,8 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
-}
-
-.colorcmyk .page-nav {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--color-border-2, #333);
-  flex: 0 0 auto;
-}
-.colorcmyk .page-nav-title {
-  font-weight: 600;
+  background: var(--lx-bg-0);
+  color: var(--lx-text-1);
 }
 
 .colorcmyk-body {
@@ -29,37 +19,118 @@
   min-height: 0;
 }
 
+/* ---- 左参数面板：bg-2 面板表面 + 发丝右边 ------------------------------- */
 .colorcmyk-panel {
   width: 420px;
   flex: 0 0 auto;
   overflow-y: auto;
-  border-right: 1px solid var(--color-border-2, #333);
-  padding: 0 10px;
+  background: var(--lx-bg-2);
+  border-right: 1px solid var(--lx-line);
+  padding: 0 var(--lx-space-3);
 }
 .colorcmyk-panel .title {
   font-weight: 600;
   margin-bottom: 4px;
+  color: var(--lx-text-1);
 }
 .colorcmyk-panel .describe {
-  color: var(--color-text-3, #999);
+  color: var(--lx-text-2);
   font-size: 12px;
   line-height: 1.6;
   margin-bottom: 10px;
 }
+/* 分区眉标与描述之间留一点呼吸 */
+.colorcmyk-panel .lx-eyebrow {
+  margin-bottom: 8px;
+}
 
+/* ---- 右视口：lx-viewport 提供 bg-1 + HUD 括角，这里只处理布局 --------- */
 .colorcmyk-viewer {
   flex: 1 1 auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #111;
-  overflow: auto;
-  padding: 16px;
+  margin: var(--lx-space-4);
+  min-width: 0;
+}
+.colorcmyk-spin {
+  width: 100%;
+  height: 100%;
 }
 .colorcmyk-empty {
-  color: #888;
+  color: var(--lx-text-3);
+  gap: 6px;
+}
+.colorcmyk-empty-title {
+  font-family: var(--lx-font-display);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--lx-text-2);
+  letter-spacing: 0.04em;
 }
 
+/* 视口内右下读数条 */
+.colorcmyk-hud {
+  right: var(--lx-space-3);
+  bottom: var(--lx-space-3);
+}
+
+/* ---- 视口左上「显示颜色」图例开关 ------------------------------------- */
+.colorcmyk-legend {
+  position: absolute;
+  top: var(--lx-space-3);
+  left: var(--lx-space-3);
+  z-index: 5;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  background: rgba(5, 7, 13, 0.62);
+  border: 1px solid var(--lx-line);
+  border-radius: var(--lx-radius-control);
+  padding: 6px 8px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.colorcmyk-legend-label {
+  color: var(--lx-text-2);
+  font-size: 12px;
+  margin-right: 2px;
+}
+.colorcmyk-legend-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  border: 1px solid var(--lx-line-bright);
+  background: var(--lx-bg-3);
+  color: var(--lx-text-1);
+  border-radius: var(--lx-radius-tag);
+  padding: 2px 8px;
+  font-size: 12px;
+  transition: border-color var(--lx-dur-hover) var(--lx-ease),
+    color var(--lx-dur-hover) var(--lx-ease);
+}
+.colorcmyk-legend-btn:hover {
+  border-color: var(--lx-cyan);
+}
+.colorcmyk-legend-btn.is-off {
+  border-color: var(--lx-line);
+  background: var(--lx-bg-1);
+  color: var(--lx-text-3);
+  text-decoration: line-through;
+}
+.colorcmyk-legend-chip {
+  width: 11px;
+  height: 11px;
+  border-radius: var(--lx-radius-tag);
+  outline: 1px solid var(--lx-line-bright);
+}
+.colorcmyk-legend-btn.is-off .colorcmyk-legend-chip {
+  opacity: 0.4;
+}
+
+/* ---- 生成信息 / 各色墨量 ---------------------------------------------- */
 .colorcmyk-stats {
   display: flex;
   gap: 8px;
@@ -76,13 +147,49 @@
   align-items: center;
   gap: 5px;
   font-size: 13px;
+  color: var(--lx-text-2);
 }
 .colorcmyk-swatch {
   display: inline-block;
   width: 12px;
   height: 12px;
-  border-radius: 2px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: var(--lx-radius-tag);
+  border: 1px solid var(--lx-line-bright);
+}
+
+/* ---- 模型厚度读数 ----------------------------------------------------- */
+.colorcmyk-total {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0 2px;
+}
+.colorcmyk-total-label {
+  font-size: 14px;
+  color: var(--lx-text-2);
+}
+.colorcmyk-total-value {
+  font-size: 17px;
+  color: var(--lx-text-1);
+}
+.colorcmyk-total-note {
+  font-size: 12px;
+  color: var(--lx-text-3);
+}
+.colorcmyk-thickness-scale {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--lx-text-2);
+}
+.colorcmyk-border-width {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--lx-text-2);
 }
 
 .colorcmyk-size-tag {
@@ -94,10 +201,11 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  color: var(--lx-text-2);
 }
 
 .colorcmyk-warn {
-  color: var(--color-danger-6, #f53f3f);
+  color: var(--lx-warn);
   font-size: 12px;
   margin-top: 8px;
 }
@@ -115,35 +223,39 @@
 }
 .colorcmyk-collapse-icon {
   font-size: 12px;
-  color: var(--color-text-3, #999);
+  color: var(--lx-text-3);
 }
 
 /* 耗材校准里的「分层」子区：快捷预设 + 参数折叠 */
 .colorcmyk-cal-sub {
   margin-top: 10px;
   padding-left: 10px;
-  border-left: 2px solid var(--color-border-2, #333);
+  border-left: 1px solid var(--lx-line);
 }
 .colorcmyk-cal-collapse {
-  font-size: 13px;
-  font-weight: 600;
-  margin: 4px 0;
+  font-family: var(--lx-font-display);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 500;
+  color: var(--lx-text-2);
+  margin: 6px 0;
 }
 
 .colorcmyk-fullimg {
   width: 100%;
   max-height: 60vh;
   object-fit: contain;
-  border: 1px solid #444;
-  border-radius: 2px;
+  border: 1px solid var(--lx-line);
+  border-radius: var(--lx-radius-control);
 }
 .colorcmyk-quant {
-  background: #000;
+  background: var(--lx-bg-1);
   margin-top: 10px;
 }
 .colorcmyk-cap {
   font-size: 12px;
-  color: var(--color-text-3, #999);
+  color: var(--lx-text-3);
   text-align: center;
   margin: 4px 0 6px;
 }
@@ -157,4 +269,23 @@
   display: block;
   width: 100%;
   height: 100%;
+}
+
+/* ---- 移动端：面板上、视口下（沿用既有折叠逻辑，仅调整方向） ---------- */
+@media (max-width: 900px) {
+  .colorcmyk {
+    height: auto;
+    min-height: 100vh;
+  }
+  .colorcmyk-body {
+    flex-direction: column;
+  }
+  .colorcmyk-panel {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--lx-line);
+  }
+  .colorcmyk-viewer {
+    min-height: 60vh;
+  }
 }

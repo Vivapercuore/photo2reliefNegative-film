@@ -11,18 +11,8 @@
   min-height: 100vh;
   width: 100%;
   overflow-x: hidden;
-}
-
-.cmykcal .page-nav {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--color-border-2, #333);
-  flex: 0 0 auto;
-}
-.cmykcal .page-nav-title {
-  font-weight: 600;
+  background: var(--lx-bg-0);
+  color: var(--lx-text-1);
 }
 
 .cmykcal-body {
@@ -30,14 +20,14 @@
   max-width: 1380px;
   width: 100%;
   margin: 0 auto;
-  padding: 0 16px 40px;
+  padding: var(--lx-space-6) var(--lx-space-4) 40px;
 }
 
 /* 自适应两栏：窄屏单栏堆叠，宽屏左(校准/步骤①②) + 右(③配准/④结果) */
 .cmykcal-grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 0 28px;
+  gap: var(--lx-space-6) 28px;
   align-items: start;
 }
 @media (min-width: 1024px) {
@@ -45,18 +35,33 @@
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
-.cmykcal-col {
+
+/* 每栏作为一块「实验记录板」：bg-2 面板表面 + 发丝边。
+   Arco List 自带 item 内边距，这里只补面板底色与边框，不再叠加水平内边距。 */
+.cmykcal-col.arco-list {
   min-width: 0;
+  background: var(--lx-bg-2);
+  border: 1px solid var(--lx-line);
+  border-radius: var(--lx-radius-panel);
 }
+
 .cmykcal-body .title {
   font-weight: 600;
   margin-bottom: 4px;
+  color: var(--lx-text-1);
 }
 .cmykcal-body .describe {
-  color: var(--color-text-3, #999);
+  color: var(--lx-text-2);
   font-size: 12px;
   line-height: 1.7;
   margin-bottom: 10px;
+}
+.cmykcal-body .lx-eyebrow {
+  margin-bottom: 8px;
+}
+.cmykcal-step span:first-child {
+  color: var(--lx-text-1);
+  font-size: 12px;
 }
 
 .cmykcal-status {
@@ -74,7 +79,7 @@
 }
 .cmykcal-presets-label {
   font-size: 12px;
-  color: var(--color-text-3, #999);
+  color: var(--lx-text-3);
 }
 
 .cmykcal-saved-item {
@@ -99,49 +104,60 @@
   max-width: 360px;
 }
 
-/* 手动修改子模块：参数表 + 命名保存 + 恢复默认 */
+/* 手动微调子模块：凹陷区 + 参数表 + 命名保存 + 恢复默认 */
 .cmykcal-editbox {
   margin-top: 12px;
   padding: 10px 12px 4px;
-  border: 1px solid var(--color-border-2, #333);
-  border-radius: 4px;
-  background: var(--color-fill-1, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--lx-line);
+  border-radius: var(--lx-radius-control);
+  background: var(--lx-bg-1);
+  box-shadow: var(--lx-panel-inset-shadow);
 }
 .cmykcal-edit-title {
-  font-weight: 600;
-  font-size: 13px;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 
-/* 拖点两用照片载入区（自建，无「上传」字样） */
+/* 拖点两用照片载入区（自建，无「上传」字样）：拖拽悬停用光谱边框（§4 预算 5） */
 .cmykcal-drop {
-  border: 1px dashed var(--color-border-3, #5a5a5a);
-  border-radius: 6px;
+  position: relative;
+  border: 1px dashed var(--lx-line);
+  border-radius: var(--lx-radius-panel);
   padding: 26px 16px;
   text-align: center;
   cursor: pointer;
-  color: var(--color-text-3, #999);
-  transition: border-color 0.2s, background 0.2s, color 0.2s;
+  color: var(--lx-text-3);
+  background: var(--lx-bg-1);
+  transition: border-color var(--lx-dur-hover) var(--lx-ease),
+    background var(--lx-dur-hover) var(--lx-ease),
+    color var(--lx-dur-hover) var(--lx-ease);
 }
-.cmykcal-drop:hover,
+.cmykcal-drop:hover {
+  border-color: var(--lx-line-bright);
+  background: var(--lx-bg-2);
+  color: var(--lx-text-1);
+}
+/* 拖拽悬停：光谱渐变边框（padding-box/border-box 双背景技巧） */
 .cmykcal-drop.is-over {
-  border-color: rgb(var(--primary-6, 22, 93, 255));
-  background: var(--color-fill-2, rgba(255, 255, 255, 0.06));
-  color: var(--color-text-1, #e0e0e0);
+  border: 1px solid transparent;
+  color: var(--lx-text-1);
+  background:
+    linear-gradient(var(--lx-bg-1), var(--lx-bg-1)) padding-box,
+    var(--lx-spectrum) border-box;
 }
 .cmykcal-drop-plus {
   font-size: 30px;
   line-height: 1;
   margin-bottom: 8px;
-  color: var(--color-text-3, #999);
+  color: var(--lx-text-3);
 }
 .cmykcal-drop-main {
   font-size: 14px;
+  color: var(--lx-text-2);
 }
 .cmykcal-drop-sub {
   font-size: 12px;
   margin-top: 6px;
-  color: var(--color-text-4, #777);
+  color: var(--lx-text-3);
 }
 
 .cmykcal-collapse-head {
@@ -153,17 +169,17 @@
   padding: 8px 0 4px;
   font-size: 13px;
   font-weight: 600;
-  border-top: 1px solid var(--color-border-2, #333);
+  border-top: 1px solid var(--lx-line);
   margin-top: 8px;
 }
 .cmykcal-collapse-icon {
   font-size: 12px;
   font-weight: 400;
-  color: var(--color-text-3, #999);
+  color: var(--lx-text-3);
 }
 
 .cmykcal-warn {
-  color: #e0792b;
+  color: var(--lx-warn);
   font-size: 12px;
   line-height: 1.7;
   margin: 6px 0;
@@ -173,6 +189,7 @@
   margin-top: 4px;
 }
 
+/* ---- 样片：白参考 + 单色厚度渐变，做成实验室「样片」气质 ------------- */
 .cmykcal-swatches {
   display: flex;
   flex-direction: column;
@@ -187,14 +204,17 @@
 }
 .cmykcal-sw-label {
   flex: 0 0 40px;
-  color: var(--color-text-2, #ccc);
+  font-family: var(--lx-font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--lx-text-2);
 }
 .cmykcal-sw-chip {
   display: inline-block;
   width: 20px;
   height: 20px;
-  border-radius: 3px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: var(--lx-radius-tag);
+  border: 1px solid var(--lx-line-bright);
 }
 
 /* 厚度渐变条：0.08→0.80mm，每格一层；随列宽自适应拉伸（带上限） */
@@ -202,9 +222,9 @@
   display: flex;
   flex: 1 1 auto;
   max-width: 520px;
-  border-radius: 3px;
+  border-radius: var(--lx-radius-tag);
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  border: 1px solid var(--lx-line-bright);
 }
 .cmykcal-ramp-strip i {
   flex: 1 1 0;
@@ -216,54 +236,65 @@
   transition: outline-color 0.1s;
 }
 .cmykcal-ramp-strip i:hover {
-  outline: 2px solid var(--color-text-1, #fff);
+  outline: 2px solid var(--lx-text-1);
   outline-offset: -2px;
   position: relative;
   z-index: 1;
 }
 .cmykcal-ramp-cap {
   font-size: 12px;
-  color: var(--color-text-3, #999);
+  color: var(--lx-text-3);
   margin: 2px 0 10px;
 }
 
+/* ---- 拼片布局示意 SVG ------------------------------------------------- */
 .cmykcal-guide {
   width: 260px;
   max-width: 100%;
   display: block;
   margin: 4px auto 12px;
-  background: #181818;
-  border-radius: 4px;
+  background: var(--lx-bg-1);
+  border: 1px solid var(--lx-line);
+  border-radius: var(--lx-radius-control);
 }
 
+/* ---- 配准画布：凹陷取景区 -------------------------------------------- */
 .cmykcal-canvas {
   max-width: 100%;
-  border: 1px solid #444;
-  border-radius: 2px;
+  border: 1px solid var(--lx-line);
+  border-radius: var(--lx-radius-control);
+  background: var(--lx-bg-1);
+  box-shadow: var(--lx-panel-inset-shadow);
   cursor: crosshair;
   display: block;
 }
 
+/* ---- α / 白点参数表：数字 mono，实验记录气质 ------------------------- */
 .cmykcal-table {
   border-collapse: collapse;
   margin: 4px 0 12px;
+  font-family: var(--lx-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 13px;
   width: 100%;
   table-layout: fixed;
 }
 .cmykcal-table th,
 .cmykcal-table td {
-  border: 1px solid var(--color-border-2, #444);
+  border: 1px solid var(--lx-line);
   padding: 5px 8px;
   text-align: center;
+  color: var(--lx-text-1);
 }
 .cmykcal-table th:first-child,
 .cmykcal-table td:first-child {
   width: 88px;
 }
 .cmykcal-table th {
-  color: var(--color-text-3, #999);
+  color: var(--lx-text-3);
   font-weight: 600;
+  letter-spacing: 0.08em;
+  background: var(--lx-bg-1);
 }
 
 /* fullscreen white backlight: the monitor acts as an even light source */
@@ -280,7 +311,7 @@
   left: 50%;
   transform: translateX(-50%);
   font-size: 12px;
-  color: #bbb;
+  color: #666;
   white-space: nowrap;
   animation: cmykcal-hint-fade 4s ease forwards;
 }

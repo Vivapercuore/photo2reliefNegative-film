@@ -6,20 +6,6 @@
   box-sizing: border-box;
 }
 
-.relief .page-nav {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--color-border, #333);
-  flex: 0 0 auto;
-}
-
-.relief .page-nav-title {
-  font-size: 16px;
-  font-weight: 600;
-}
-
 .relief-body {
   flex: 1 1 auto;
   display: flex;
@@ -30,9 +16,17 @@
   width: 460px;
   max-width: 46%;
   overflow-y: auto;
-  padding: 12px;
+  padding: var(--lx-space-4);
   box-sizing: border-box;
-  border-right: 1px solid var(--color-border, #333);
+  border-right: 1px solid var(--lx-line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--lx-space-4);
+}
+
+/* 分区卡片：.lx-panel 提供表面/边缘导光，这里只补内部排版 */
+.relief-section > .lx-eyebrow {
+  margin-bottom: var(--lx-space-3);
 }
 
 .relief-viewer {
@@ -46,25 +40,43 @@
   height: 100%;
 }
 
+/* 视口角落读数：右下角 */
+.relief-hud {
+  right: var(--lx-space-4);
+  bottom: var(--lx-space-3);
+}
+
+/* 空状态邀请文案 */
 .relief-empty {
   width: 100%;
   height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  color: var(--color-text-3, #999);
+}
+.relief-empty-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--lx-text-2);
+}
+.relief-empty-hint {
+  font-size: 13px;
+  color: var(--lx-text-3);
 }
 
-.relief .title {
+/* 字段小标题（中文），区别于 .lx-eyebrow 分区眉标 */
+.relief-field-label {
   font-weight: 600;
+  color: var(--lx-text-1);
   margin-bottom: 4px;
 }
 
 .relief .describe {
-  color: var(--color-text-3, #999);
+  color: var(--lx-text-3);
   font-size: 13px;
   margin-bottom: 10px;
+}
+
+/* 读数行：允许内部 .lx-data 与中文混排对齐 */
+.relief-readout {
+  color: var(--lx-text-2);
 }
 
 .relief-collapse-head {
@@ -75,20 +87,19 @@
   user-select: none;
   margin-top: 12px;
 }
-.relief-collapse-head .title {
+.relief-collapse-head .relief-field-label {
   margin-bottom: 0;
 }
 .relief-collapse-icon {
   font-size: 12px;
-  color: var(--color-text-3, #999);
+  color: var(--lx-text-3);
 }
 
+/* 预览图 / 画布：凹陷区由 .lx-panel-inset 提供，这里只控尺寸 */
 .relief-input-img {
   width: 100%;
   max-height: 30vh;
   object-fit: contain;
-  border: 1px solid var(--color-border, #333);
-  border-radius: 4px;
 }
 
 .relief-preview-canvas {
@@ -96,9 +107,6 @@
   max-height: 30vh;
   object-fit: contain;
   image-rendering: auto;
-  background: #000;
-  border: 1px solid var(--color-border, #333);
-  border-radius: 4px;
 }
 
 .relief-size-tag {
@@ -132,7 +140,7 @@
 }
 
 .relief-param-hint {
-  color: var(--color-text-3, #999);
+  color: var(--lx-text-3);
   font-size: 12px;
 }
 
@@ -144,7 +152,7 @@
     width: 100%;
     max-width: 100%;
     border-right: none;
-    border-bottom: 1px solid var(--color-border, #333);
+    border-bottom: 1px solid var(--lx-line);
   }
   .relief-viewer {
     min-height: 360px;

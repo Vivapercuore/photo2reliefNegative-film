@@ -1,13 +1,21 @@
 .zoomable-img {
   display: block;
   cursor: zoom-in;
+  background: var(--lx-bg-1);
+  border: 1px solid var(--lx-line);
+  border-radius: var(--lx-radius-control);
+  box-shadow: var(--lx-panel-inset-shadow);
+  transition: border-color var(--lx-dur-hover) var(--lx-ease);
+}
+.zoomable-img:hover {
+  border-color: var(--lx-line-bright);
 }
 
 .zoom-lightbox {
   position: fixed;
   inset: 0;
   z-index: 2000;
-  background: rgba(0, 0, 0, 0.92);
+  background: rgba(5, 7, 13, 0.92);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -27,9 +35,12 @@
   left: 50%;
   bottom: 14px;
   transform: translateX(-50%);
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.65);
-  background: rgba(0, 0, 0, 0.35);
+  font-family: var(--lx-font-mono);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--lx-text-2);
+  background: var(--lx-bg-2);
+  border: 1px solid var(--lx-line);
   padding: 4px 12px;
   border-radius: 14px;
   user-select: none;
@@ -39,9 +50,14 @@
   position: fixed;
   top: 12px;
   right: 24px;
-  font-size: 40px;
+  font-family: var(--lx-font-display);
+  font-size: 32px;
   line-height: 1;
-  color: #fff;
+  color: var(--lx-text-1);
   cursor: pointer;
   user-select: none;
+  transition: color var(--lx-dur-hover) var(--lx-ease);
+}
+.zoom-close:hover {
+  color: var(--lx-cyan);
 }

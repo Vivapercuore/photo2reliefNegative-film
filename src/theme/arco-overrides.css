@@ -1,0 +1,569 @@
+/* =============================================================================
+   LUMEN「透光」— Arco Design 暗色主题覆盖
+   加载顺序：必须在 arco.css 之后、tokens.css 之后。
+   契约来源：src/theme/DESIGN.md §7。
+
+   Arco 变量模型（已用 grep 核实 node_modules/@arco-design/web-react/dist/css/arco.css）：
+   - 基础色板变量（--arcoblue-N / --gray-N / --green-6 ...）是「R,G,B」数字三元组，
+     通过 rgb(var(--arcoblue-6)) 使用。
+   - 语义 token（--color-bg-N / --color-text-N / --color-border-N / --color-fill-N）
+     在暗色下是 var(--color-neutral-N)（= rgb(var(--gray-N)))、直接 hex 或 rgba。
+   - 暗色主题作用域：body[arco-theme='dark']（单引号）。
+   覆盖策略：既重定义基础三元组，也直接兜底语义 token，双保险。
+   ============================================================================= */
+
+body[arco-theme='dark'] {
+  /* ---- primary 主色 ramp（cyan #3FD8F0 = 63,216,240 于第 6 级）-------- */
+  --arcoblue-1: 8, 22, 30;
+  --arcoblue-2: 12, 40, 52;
+  --arcoblue-3: 18, 66, 82;
+  --arcoblue-4: 26, 100, 120;
+  --arcoblue-5: 40, 160, 185;
+  --arcoblue-6: 63, 216, 240;   /* --lx-cyan */
+  --arcoblue-7: 110, 228, 246;
+  --arcoblue-8: 158, 238, 250;
+  --arcoblue-9: 200, 246, 252;
+  --arcoblue-10: 228, 251, 254;
+
+  /* link 复用 primary */
+  --link-1: 8, 22, 30;
+  --link-2: 12, 40, 52;
+  --link-3: 18, 66, 82;
+  --link-4: 26, 100, 120;
+  --link-5: 40, 160, 185;
+  --link-6: 63, 216, 240;
+  --link-7: 110, 228, 246;
+  --link-8: 158, 238, 250;
+  --link-9: 200, 246, 252;
+  --link-10: 228, 251, 254;
+
+  /* ---- 语义状态色（success/warning/danger 的底色三元组）------------- */
+  /* success = --lx-ok #53E29B = 83,226,155 */
+  --green-6: 83, 226, 155;
+  --green-5: 110, 232, 172;
+  --green-7: 60, 200, 135;
+  /* warning = --lx-warn #FFC24D = 255,194,77 */
+  --orange-6: 255, 194, 77;
+  --gold-6: 255, 194, 77;
+  --orange-5: 255, 206, 110;
+  --orange-7: 230, 172, 60;
+  /* danger = --lx-danger #FF6B7A = 255,107,122 */
+  --red-6: 255, 107, 122;
+  --red-5: 255, 138, 150;
+  --red-7: 224, 92, 106;
+
+  /* ---- 中性灰阶（暗色下 --color-*-N 大量引用 rgb(var(--gray-N)))------ */
+  /* 由深到浅映射到 LUMEN 面板 / 边框 / 文字体系。gray-1 最深，gray-10 最浅。 */
+  --gray-1: 5, 7, 13;      /* #05070D bg-0 */
+  --gray-2: 16, 22, 37;    /* #101625 bg-2（面板）*/
+  --gray-3: 30, 39, 64;    /* #1E2740 line */
+  --gray-4: 42, 53, 86;    /* #2A3556 line-bright */
+  --gray-5: 93, 104, 138;  /* #5D688A text-3 */
+  --gray-6: 93, 104, 138;  /* text-3 */
+  --gray-7: 154, 164, 192; /* #9AA4C0 text-2 */
+  --gray-8: 154, 164, 192; /* text-2 */
+  --gray-9: 230, 236, 248; /* #E6ECF8 text-1 */
+  --gray-10: 230, 236, 248;/* text-1 */
+
+  /* ---- 语义 token 直接兜底（暗色下部分为 rgba/hex，不走 gray）-------- */
+  --color-bg-1: var(--lx-bg-1);
+  --color-bg-2: var(--lx-bg-2);
+  --color-bg-3: var(--lx-bg-2);
+  --color-bg-4: var(--lx-bg-3);
+  --color-bg-5: var(--lx-bg-3);
+  --color-bg-white: var(--lx-bg-2);
+  --color-menu-dark-bg: var(--lx-bg-1);
+  --color-bg-popup: var(--lx-bg-3);
+
+  --color-text-1: var(--lx-text-1);
+  --color-text-2: var(--lx-text-2);
+  --color-text-3: var(--lx-text-3);
+  --color-text-4: var(--lx-text-3);
+
+  --color-border-1: var(--lx-line);
+  --color-border-2: var(--lx-line);
+  --color-border-3: var(--lx-line-bright);
+  --color-border-4: var(--lx-line-bright);
+
+  --color-fill-1: rgba(190, 215, 255, 0.04);
+  --color-fill-2: rgba(190, 215, 255, 0.07);
+  --color-fill-3: rgba(190, 215, 255, 0.11);
+  --color-fill-4: rgba(190, 215, 255, 0.16);
+
+  /* 圆角体系（§3）*/
+  --border-radius-small: 2px;
+  --border-radius-medium: var(--lx-radius-control);
+  --border-radius-large: var(--lx-radius-panel);
+}
+
+/* =============================================================================
+   组件级精修（类选择器覆盖，§7）
+   下列选择器默认作用于暗色，个别 portal 组件（Message/Modal/Notification/
+   Tooltip/Select 下拉等）挂在 body 下、不在 .App 内，因此这里不加 .App 作用域。
+   ============================================================================= */
+
+/* ---- Button --------------------------------------------------------------
+   primary：cyan 底 + 深色文字；hover 顶部 1px 光谱高光（§4 预算 3）。
+   secondary/default：发丝描边幽灵按钮。 */
+.arco-btn {
+  font-family: var(--lx-font-display);
+  font-weight: 500;
+  border-radius: var(--lx-radius-control);
+  transition: background-color var(--lx-dur-hover) var(--lx-ease),
+    border-color var(--lx-dur-hover) var(--lx-ease),
+    color var(--lx-dur-hover) var(--lx-ease);
+}
+/* Arco 自身规则形如 .arco-btn-primary:not(.arco-btn-disabled)（0,2,0），
+   覆盖必须对齐该优先级，否则 color 等会被 Arco 默认值压回。 */
+.arco-btn-primary:not(.arco-btn-disabled),
+.arco-btn-primary:not(.arco-btn-disabled):focus {
+  background-color: var(--lx-cyan);
+  border-color: var(--lx-cyan);
+  color: #041014;
+}
+.arco-btn-primary:not(.arco-btn-disabled):not(.arco-btn-loading):hover {
+  background-color: #6EE4F6;
+  border-color: #6EE4F6;
+  color: #041014;
+}
+.arco-btn-primary:not(.arco-btn-disabled):not(.arco-btn-loading):active {
+  background-color: #28A0B9;
+  border-color: #28A0B9;
+  color: #041014;
+}
+/* hover 顶部 1px 光谱高光线（§4 预算 3）*/
+.arco-btn-primary {
+  position: relative;
+  overflow: hidden;
+}
+.arco-btn-primary::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--lx-spectrum);
+  opacity: 0;
+  transition: opacity var(--lx-dur-hover) var(--lx-ease);
+  pointer-events: none;
+}
+.arco-btn-primary:hover::before {
+  opacity: 1;
+}
+/* 幽灵 / 次级按钮：发丝描边（选择器优先级同样对齐 Arco 的 :not() 规则） */
+.arco-btn-secondary:not(.arco-btn-disabled),
+.arco-btn-secondary:not(.arco-btn-disabled):focus {
+  background-color: transparent;
+  border: 1px solid var(--lx-line);
+  color: var(--lx-text-1);
+}
+.arco-btn-secondary:not(.arco-btn-disabled):not(.arco-btn-loading):hover {
+  background-color: var(--lx-bg-3);
+  border-color: var(--lx-line-bright);
+  color: var(--lx-text-1);
+}
+.arco-btn-outline:not(.arco-btn-disabled),
+.arco-btn-outline:not(.arco-btn-disabled):focus {
+  border-color: var(--lx-cyan);
+  color: var(--lx-cyan);
+}
+.arco-btn-outline:not(.arco-btn-disabled):not(.arco-btn-loading):hover {
+  background-color: rgba(63, 216, 240, 0.10);
+  border-color: #6EE4F6;
+  color: #6EE4F6;
+}
+.arco-btn-text:not(.arco-btn-disabled) {
+  color: var(--lx-text-2);
+}
+.arco-btn-text:not(.arco-btn-disabled):not(.arco-btn-loading):hover {
+  color: var(--lx-cyan);
+  background-color: rgba(63, 216, 240, 0.08);
+}
+
+/* ---- Slider：2px 轨道、光谱填充、12px 方形手柄（§7 / §4 预算 2）------ */
+.arco-slider-road,
+.arco-slider-bar {
+  height: 2px;
+}
+.arco-slider-road {
+  background-color: var(--lx-line);
+}
+.arco-slider-bar {
+  background: var(--lx-spectrum);
+}
+/* 本版本 Arco 的手柄类名是 .arco-slider-button，可视旋钮画在 ::after 上 */
+.arco-slider-button {
+  width: 12px;
+  height: 12px;
+}
+.arco-slider-button::after {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--lx-radius-tag); /* 方形手柄 = 技术签名 */
+  border: 1px solid var(--lx-cyan);
+  background: var(--lx-bg-0);
+  box-shadow: none;
+}
+.arco-slider-button:hover::after,
+.arco-slider-button:focus-visible::after,
+.arco-slider-button.arco-slider-button-active::after {
+  border-color: var(--lx-cyan);
+  box-shadow: 0 0 0 3px rgba(63, 216, 240, 0.18);
+}
+
+/* ---- Input / InputNumber / Select / Textarea：bg-1 凹陷、发丝边、cyan focus
+        数字内容用 mono（§7）------------------------------------------- */
+.arco-input,
+.arco-input-inner-wrapper,
+.arco-input-number,
+.arco-select-view,
+.arco-textarea-wrapper {
+  background-color: var(--lx-bg-1);
+  border: 1px solid var(--lx-line);
+  border-radius: var(--lx-radius-control);
+}
+/* 包装器内层的 input 不再自带底/边，避免双重边框 */
+.arco-input-inner-wrapper .arco-input,
+.arco-input-number .arco-input {
+  background-color: transparent;
+  border: none;
+}
+.arco-input:hover,
+.arco-input-inner-wrapper:hover,
+.arco-input-number:hover,
+.arco-select-view:hover,
+.arco-textarea-wrapper:hover {
+  border-color: var(--lx-line-bright);
+  background-color: var(--lx-bg-1);
+}
+.arco-input.arco-input-focus,
+.arco-input-inner-wrapper-focus,
+.arco-input-number:focus-within,
+.arco-select-focused .arco-select-view,
+.arco-textarea-wrapper.arco-textarea-focus {
+  border-color: var(--lx-cyan);
+  background-color: var(--lx-bg-1);
+  box-shadow: 0 0 0 2px rgba(63, 216, 240, 0.15);
+}
+/* 数字类输入内容用等宽 mono */
+.arco-input-number .arco-input,
+.arco-input-number input {
+  font-family: var(--lx-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.arco-input,
+.arco-textarea,
+.arco-select-view-value {
+  color: var(--lx-text-1);
+}
+.arco-input::placeholder,
+.arco-textarea::placeholder {
+  color: var(--lx-text-3);
+}
+/* InputNumber 加减按钮 */
+.arco-input-number-step-button {
+  background-color: var(--lx-bg-2);
+  border-color: var(--lx-line);
+  color: var(--lx-text-2);
+}
+.arco-input-number-step-button:hover {
+  color: var(--lx-cyan);
+  background-color: var(--lx-bg-3);
+}
+
+/* ---- Select 下拉（portal，挂 body 下）------------------------------- */
+.arco-select-popup,
+.arco-dropdown-menu {
+  background-color: var(--lx-bg-3);
+  border: 1px solid var(--lx-line);
+  border-radius: var(--lx-radius-panel);
+  box-shadow: var(--lx-panel-shadow);
+}
+.arco-select-option:hover,
+.arco-dropdown-menu-item:hover {
+  background-color: var(--lx-bg-2);
+}
+.arco-select-option-selected {
+  background-color: rgba(63, 216, 240, 0.12);
+  color: var(--lx-cyan);
+  font-weight: 500;
+}
+
+/* ---- Switch --------------------------------------------------------------- */
+.arco-switch {
+  background-color: var(--lx-line);
+  border-radius: 999px;
+}
+.arco-switch-checked {
+  background-color: var(--lx-cyan);
+}
+.arco-switch-checked .arco-switch-dot {
+  color: var(--lx-cyan);
+}
+
+/* ---- Radio ---------------------------------------------------------------- */
+.arco-radio .arco-radio-mask {
+  background-color: var(--lx-bg-1);
+  border-color: var(--lx-line-bright);
+}
+.arco-radio-checked .arco-radio-mask {
+  background-color: var(--lx-cyan);
+  border-color: var(--lx-cyan);
+}
+.arco-radio-checked .arco-radio-mask::after {
+  background-color: var(--lx-bg-0);
+}
+/* Radio 按钮组（分段控件）*/
+.arco-radio-group-type-button {
+  background-color: var(--lx-bg-1);
+  border: 1px solid var(--lx-line);
+  border-radius: var(--lx-radius-control);
+}
+.arco-radio-button {
+  color: var(--lx-text-2);
+}
+.arco-radio-button.arco-radio-checked {
+  color: #041014;
+}
+.arco-radio-group-type-button .arco-radio-button.arco-radio-checked::before,
+.arco-radio-button.arco-radio-checked {
+  background-color: var(--lx-cyan);
+}
+
+/* ---- Tag：2px 圆角、本色板 --------------------------------------------- */
+.arco-tag {
+  border-radius: var(--lx-radius-tag);
+  font-family: var(--lx-font-mono);
+  font-variant-numeric: tabular-nums;
+  background-color: var(--lx-bg-3);
+  border: 1px solid var(--lx-line);
+  color: var(--lx-text-2);
+}
+.arco-tag-checked {
+  background-color: rgba(63, 216, 240, 0.14);
+  border-color: rgba(63, 216, 240, 0.4);
+  color: var(--lx-cyan);
+}
+
+/* ---- Table ---------------------------------------------------------------- */
+.arco-table-th {
+  background-color: var(--lx-bg-1);
+  color: var(--lx-text-2);
+  border-color: var(--lx-line);
+  font-weight: 500;
+}
+.arco-table-td {
+  background-color: var(--lx-bg-2);
+  color: var(--lx-text-1);
+  border-color: var(--lx-line);
+}
+.arco-table-tr:hover .arco-table-td,
+.arco-table-tr.arco-table-tr-hover .arco-table-td {
+  background-color: var(--lx-bg-3);
+}
+.arco-table-container,
+.arco-table-border .arco-table-container {
+  border-color: var(--lx-line);
+  border-radius: var(--lx-radius-panel);
+}
+/* 表格内数字用 mono */
+.arco-table-td .lx-data,
+.arco-table-cell .lx-data {
+  font-family: var(--lx-font-mono);
+}
+
+/* ---- Collapse ------------------------------------------------------------- */
+.arco-collapse {
+  border-color: var(--lx-line);
+  border-radius: var(--lx-radius-panel);
+}
+.arco-collapse-item {
+  border-color: var(--lx-line);
+}
+.arco-collapse-item-header {
+  background-color: var(--lx-bg-2);
+  border-color: var(--lx-line);
+  color: var(--lx-text-1);
+}
+.arco-collapse-item-content {
+  background-color: var(--lx-bg-1);
+  color: var(--lx-text-2);
+}
+
+/* ---- Modal（portal，body 下）---------------------------------------- */
+.arco-modal {
+  background-color: var(--lx-bg-2);
+  border: 1px solid var(--lx-line);
+  border-radius: var(--lx-radius-panel);
+  box-shadow: var(--lx-panel-shadow);
+}
+.arco-modal-header {
+  border-bottom: 1px solid var(--lx-line);
+}
+.arco-modal-title {
+  color: var(--lx-text-1);
+  font-family: var(--lx-font-display);
+  font-weight: 500;
+}
+.arco-modal-footer {
+  border-top: 1px solid var(--lx-line);
+}
+.arco-modal-mask {
+  background-color: rgba(5, 7, 13, 0.72);
+}
+
+/* ---- Message（portal，body 下）------------------------------------- */
+.arco-message {
+  background-color: var(--lx-bg-3);
+  border: 1px solid var(--lx-line);
+  border-radius: var(--lx-radius-control);
+  color: var(--lx-text-1);
+  box-shadow: var(--lx-panel-shadow);
+}
+
+/* ---- Notification（portal，body 下）-------------------------------- */
+.arco-notification {
+  background-color: var(--lx-bg-3);
+  border: 1px solid var(--lx-line);
+  border-radius: var(--lx-radius-panel);
+  color: var(--lx-text-1);
+  box-shadow: var(--lx-panel-shadow);
+}
+
+/* ---- Tooltip / Popover（portal，body 下）--------------------------- */
+.arco-tooltip-content,
+.arco-popover-content {
+  background-color: var(--lx-bg-3);
+  border: 1px solid var(--lx-line);
+  border-radius: var(--lx-radius-control);
+  color: var(--lx-text-1);
+}
+.arco-tooltip-content-inner {
+  background-color: transparent;
+  color: var(--lx-text-1);
+}
+
+/* ---- Progress：光谱进度（§4 预算 2）--------------------------------- */
+.arco-progress-line-inner {
+  background: var(--lx-spectrum);
+}
+.arco-progress-line-outer {
+  background-color: var(--lx-line);
+}
+/* 环形进度：mask 是底轨，path 是进度弧 */
+.arco-progress-circle-mask {
+  stroke: var(--lx-line);
+}
+.arco-progress-circle-path {
+  stroke: var(--lx-cyan);
+}
+.arco-progress-line-text,
+.arco-progress-circle-text {
+  color: var(--lx-text-2);
+  font-family: var(--lx-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Spin ----------------------------------------------------------------- */
+.arco-spin-icon,
+.arco-spin-dot {
+  color: var(--lx-cyan);
+  background-color: var(--lx-cyan);
+}
+.arco-spin-loading-layer {
+  background-color: rgba(5, 7, 13, 0.55);
+}
+
+/* ---- Upload 拖拽区（悬停用光谱边框，§4 预算 5）
+        可视拖拽框是 .arco-upload-trigger-drag（外层 .arco-upload-drag 只是容器）*/
+.arco-upload-trigger-drag {
+  background-color: var(--lx-bg-1);
+  border: 1px dashed var(--lx-line);
+  border-radius: var(--lx-radius-panel);
+  color: var(--lx-text-2);
+  transition: border-color var(--lx-dur-hover) var(--lx-ease),
+    background-color var(--lx-dur-hover) var(--lx-ease);
+}
+.arco-upload-trigger-drag:hover {
+  border-color: var(--lx-line-bright);
+  background-color: var(--lx-bg-2);
+}
+/* 拖拽悬停：光谱边框（用渐变边框技巧）*/
+.arco-upload-trigger-drag.arco-upload-trigger-drag-active {
+  background:
+    linear-gradient(var(--lx-bg-1), var(--lx-bg-1)) padding-box,
+    var(--lx-spectrum) border-box;
+  border: 1px solid transparent;
+}
+
+/* ---- Popconfirm（portal，body 下）---------------------------------- */
+.arco-popconfirm .arco-popover-content,
+.arco-popconfirm-content {
+  background-color: var(--lx-bg-3);
+  border: 1px solid var(--lx-line);
+  color: var(--lx-text-1);
+}
+
+/* ---- Alert ---------------------------------------------------------------- */
+.arco-alert {
+  border-radius: var(--lx-radius-control);
+  border: 1px solid var(--lx-line);
+}
+.arco-alert-info {
+  background-color: rgba(63, 216, 240, 0.08);
+  border-color: rgba(63, 216, 240, 0.3);
+}
+.arco-alert-success {
+  background-color: rgba(83, 226, 155, 0.08);
+  border-color: rgba(83, 226, 155, 0.3);
+}
+.arco-alert-warning {
+  background-color: rgba(255, 194, 77, 0.08);
+  border-color: rgba(255, 194, 77, 0.3);
+}
+.arco-alert-error {
+  background-color: rgba(255, 107, 122, 0.08);
+  border-color: rgba(255, 107, 122, 0.3);
+}
+
+/* ---- List ----------------------------------------------------------------- */
+.arco-list {
+  background-color: transparent;
+  border-radius: var(--lx-radius-panel);
+  color: var(--lx-text-1);
+}
+.arco-list-wrapper .arco-list {
+  border-color: var(--lx-line);
+}
+.arco-list-header,
+.arco-list-footer {
+  border-color: var(--lx-line);
+  color: var(--lx-text-2);
+}
+.arco-list-item {
+  border-color: var(--lx-line);
+  color: var(--lx-text-1);
+}
+.arco-list-item:hover {
+  background-color: var(--lx-bg-3);
+}
+
+/* ---- Card ----------------------------------------------------------------- */
+.arco-card {
+  background-color: var(--lx-bg-2);
+  border: 1px solid var(--lx-line);
+  border-radius: var(--lx-radius-panel);
+  color: var(--lx-text-1);
+}
+.arco-card-header {
+  border-color: var(--lx-line);
+}
+.arco-card-header-title {
+  color: var(--lx-text-1);
+  font-family: var(--lx-font-display);
+  font-weight: 500;
+}
+.arco-card-meta-description {
+  color: var(--lx-text-2);
+}

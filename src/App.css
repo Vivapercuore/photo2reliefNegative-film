@@ -1,18 +1,11 @@
-#root,.App {
-  text-align: center;
+/* =============================================================================
+   .App 根容器 —— 仅承载布局/尺寸；视觉交由 theme/ 与各页面局部 CSS。
+   （已移除 legacy 的 text-align:center 与全局隐藏滚动条规则：
+    滚动条按 DESIGN.md §3 恢复可见，细滚动条在 tokens.css 定义。）
+   ============================================================================= */
+
+#root,
+.App {
   width: 100%;
-  /* overflow: scroll; */
+  min-height: 100vh;
 }
-
-*::-webkit-scrollbar{
-  display: none;
-}
-
-
-.App-header {
-  background-color: #282c34;
-  font-size: calc(10px + 2vmin);
-  color: white;
-  margin-top: 5vmin;
-}
-

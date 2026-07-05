@@ -14,6 +14,7 @@ import {
   Modal,
   // @ts-ignore arco 类型偶尔解析不到
 } from '@arco-design/web-react';
+import PageNav from '../components/PageNav';
 import * as THREE from 'three';
 import { useDocumentTitle } from '../useDocumentTitle';
 import { PhotoSizeMap } from '../constants';
@@ -418,22 +419,24 @@ const ColorPositive: React.FC = () => {
 
   return (
     <div className="colorpos">
-      <div className="page-nav">
-        <Button type="text" size="small" onClick={() => navigate('/')}>
-          ← 返回首页
-        </Button>
-        <span className="page-nav-title">
-          彩色照片转正片（
-          {paletteMode === 'rgbkw' ? 'RGB+黑+白' : paletteMode === 'rgbw' ? 'RGB+白' : 'RGB+黑'} ·
-          测试版）
-        </span>
-      </div>
+      <PageNav
+        title="彩色照片转正片"
+        code="RGB+"
+        actions={
+          <Tag className="lx-data" color="arcoblue">
+            {paletteMode === 'rgbkw' ? 'RGB+黑+白' : paletteMode === 'rgbw' ? 'RGB+白' : 'RGB+黑'}
+          </Tag>
+        }
+      />
 
       <div className="colorpos-body">
-        <div className="colorpos-panel">
+        <div className="colorpos-panel lx-rise">
           <List size="large" header="上传彩色照片，生成多色正片">
             <List.Item key="calibration">
-              <div className="title">耗材校准</div>
+              <div className="lx-eyebrow colorpos-eyebrow">
+                <span>耗材校准</span>
+                <span className="lx-eyebrow-code">CALIBRATION</span>
+              </div>
               <div className="describe">
                 每卷耗材打印出的实际颜色都偏离理想原色，校准后预览和成品才一致。
                 {cal.calibrated
@@ -476,7 +479,10 @@ const ColorPositive: React.FC = () => {
             </List.Item>
 
             <List.Item key="upload">
-              <div className="title">选择图像</div>
+              <div className="lx-eyebrow colorpos-eyebrow">
+                <span>选择图像</span>
+                <span className="lx-eyebrow-code">INPUT</span>
+              </div>
               <div className="describe">支持 jpg/png，全部在本地浏览器处理，不上传服务器。</div>
               <Upload
                 drag
@@ -499,7 +505,10 @@ const ColorPositive: React.FC = () => {
                     className="colorpos-collapse-head"
                     onClick={() => setPreviewOpen((o) => !o)}
                   >
-                    <span className="title">原图 / 预览图</span>
+                    <div className="lx-eyebrow colorpos-eyebrow" style={{ marginBottom: 0 }}>
+                      <span>原图 / 预览图</span>
+                      <span className="lx-eyebrow-code">PREVIEW</span>
+                    </div>
                     <span className="colorpos-collapse-icon">{previewOpen ? '收起 ▲' : '展开 ▼'}</span>
                   </div>
                   {previewOpen ? (
@@ -545,7 +554,10 @@ const ColorPositive: React.FC = () => {
                 </List.Item>
 
                 <List.Item key="palette">
-                  <div className="title">配色方案</div>
+                  <div className="lx-eyebrow colorpos-eyebrow">
+                    <span>配色方案</span>
+                    <span className="lx-eyebrow-code">PALETTE</span>
+                  </div>
                   <div className="describe">
                     黑+白：黑压暗部、白补高光、RGB 管彩色，明暗都有锚点，最稳；白：仅亮部填白，暗图易出噪点；黑：暗部用黑，更适合背光透射。
                   </div>
@@ -562,8 +574,11 @@ const ColorPositive: React.FC = () => {
 
                 {palette.length > 4 ? (
                   <List.Item key="ams">
-                    <div className="title">
-                      是否有 5 色 AMS<span className="colorpos-required">*必选</span>
+                    <div className="lx-eyebrow colorpos-eyebrow">
+                      <span>
+                        是否有 5 色 AMS<span className="colorpos-required">*必选</span>
+                      </span>
+                      <span className="lx-eyebrow-code">AMS</span>
                     </div>
                     <div className="describe">
                       5 色方案需要 5 个料槽；只有 4 色 AMS 时通过暂停换料完成。选择会被记住，下次自动恢复。
@@ -602,7 +617,10 @@ const ColorPositive: React.FC = () => {
                 ) : null}
 
                 <List.Item key="dot">
-                  <div className="title">像素点尺寸 (mm)</div>
+                  <div className="lx-eyebrow colorpos-eyebrow">
+                    <span>像素点尺寸 (mm)</span>
+                    <span className="lx-eyebrow-code">GEOMETRY</span>
+                  </div>
                   <div className="describe">
                     单个像素点的物理边长，最小 0.2mm（受喷嘴线宽限制）。越小画面越细腻、像素越多，生成与切片也越慢。
                   </div>
@@ -648,7 +666,10 @@ const ColorPositive: React.FC = () => {
                 </List.Item>
 
                 <List.Item key="thickness">
-                  <div className="title">厚度</div>
+                  <div className="lx-eyebrow colorpos-eyebrow">
+                    <span>厚度</span>
+                    <span className="lx-eyebrow-code">THICKNESS</span>
+                  </div>
                   <div className="describe">染色层厚度（彩色像素），越厚颜色越实，最低 0.2mm。</div>
                   <InputNumber
                     style={{ width: 180 }}
@@ -676,13 +697,19 @@ const ColorPositive: React.FC = () => {
                     onChange={(v: number) => setBaseThickness(v)}
                   />
                   <div className="describe" style={{ marginTop: 8 }}>
-                    总厚度 {totalThickness.toFixed(2)} mm（染色 {colorThickness.toFixed(2)} + 底片{' '}
-                    {baseThickness.toFixed(2)}）
+                    总厚度{' '}
+                    <span className="lx-data">
+                      {totalThickness.toFixed(2)} mm（染色 {colorThickness.toFixed(2)} + 底片{' '}
+                      {baseThickness.toFixed(2)}）
+                    </span>
                   </div>
                 </List.Item>
 
                 <List.Item key="border">
-                  <div className="title">边框</div>
+                  <div className="lx-eyebrow colorpos-eyebrow">
+                    <span>边框</span>
+                    <span className="lx-eyebrow-code">BORDER</span>
+                  </div>
                   <div className="colorpos-switch">
                     <Switch
                       checked={addBorder}
@@ -710,12 +737,15 @@ const ColorPositive: React.FC = () => {
 
                 {stats ? (
                   <List.Item key="stats">
-                    <div className="title">生成信息</div>
+                    <div className="lx-eyebrow colorpos-eyebrow">
+                      <span>生成信息</span>
+                      <span className="lx-eyebrow-code">STATS</span>
+                    </div>
                     <div className="colorpos-stats">
-                      <Tag color="arcoblue">
+                      <Tag color="arcoblue" className="lx-data">
                         逻辑像素 {stats.cols} × {stats.rows}
                       </Tag>
-                      <Tag color="green">
+                      <Tag color="green" className="lx-data">
                         物理尺寸 {stats.widthMm.toFixed(1)} × {stats.heightMm.toFixed(1)} mm
                       </Tag>
                     </div>
@@ -726,7 +756,10 @@ const ColorPositive: React.FC = () => {
                             className="colorpos-swatch"
                             style={{ background: `rgb(${p.rgb.join(',')})` }}
                           />
-                          {p.label} {((stats.counts[i] / stats.total) * 100).toFixed(1)}%
+                          {p.label}{' '}
+                          <span className="lx-data">
+                            {((stats.counts[i] / stats.total) * 100).toFixed(1)}%
+                          </span>
                         </span>
                       ))}
                     </div>
@@ -734,7 +767,10 @@ const ColorPositive: React.FC = () => {
                 ) : null}
 
                 <List.Item key="export">
-                  <div className="title">导出</div>
+                  <div className="lx-eyebrow colorpos-eyebrow">
+                    <span>导出</span>
+                    <span className="lx-eyebrow-code">EXPORT</span>
+                  </div>
                   <div className="describe">
                     模型随参数自动生成，右侧实时预览着色效果。
                   </div>
@@ -755,17 +791,23 @@ const ColorPositive: React.FC = () => {
         </div>
 
         <div className="colorpos-viewer">
-          <Spin loading={generating} tip="生成模型中…" style={{ width: '100%', height: '100%' }}>
-            {viewObject ? (
-              <ModelViewer object={viewObject} className="colorpos-3d" />
-            ) : (
-              <div className="colorpos-empty">
-                上传图片、设置参数后
-                <br />
-                点「生成 3D 模型」在此预览着色效果
+          <div className="lx-viewport" style={{ width: '100%', height: '100%' }}>
+            {viewObject && stats ? (
+              <div className="lx-viewport-hud colorpos-viewport-hud">
+                {stats.cols}×{stats.rows} · {stats.widthMm.toFixed(0)}×{stats.heightMm.toFixed(0)}mm
               </div>
-            )}
-          </Spin>
+            ) : null}
+            <Spin loading={generating} tip="生成模型中…" style={{ width: '100%', height: '100%' }}>
+              {viewObject ? (
+                <ModelViewer object={viewObject} className="colorpos-3d" />
+              ) : (
+                <div className="lx-empty" style={{ width: '100%', height: '100%' }}>
+                  <div className="colorpos-empty-title">上传图片、设置参数后</div>
+                  <div className="colorpos-empty-sub">在此预览着色效果</div>
+                </div>
+              )}
+            </Spin>
+          </div>
         </div>
       </div>
     </div>
