@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   List,
   Upload,
@@ -24,6 +23,7 @@ import ModelViewer from './viewer/ModelViewer';
 import PathPreview from './viewer/PathPreview';
 import { pack3mf } from 'bambu-3mf';
 import { useDocumentTitle } from '../useDocumentTitle';
+import PageNav from '../components/PageNav';
 
 const Option = Select.Option;
 
@@ -93,7 +93,6 @@ function autoDepthRatio(model: LacModel, thickness: number): number {
 }
 
 const LaserCut: React.FC = () => {
-  const navigate = useNavigate();
   useDocumentTitle('激光刀切转3D模型');
 
   const [fileName, setFileName] = useState('');
@@ -408,16 +407,15 @@ const LaserCut: React.FC = () => {
 
   return (
     <div className="laser">
-      <div className="page-nav">
-        <Button type="text" size="small" onClick={() => navigate('/')}>
-          ← 返回首页
-        </Button>
-        <span className="page-nav-title">激光刀切转 3D 模型</span>
-      </div>
+      <PageNav title="激光刀切转3D模型" code="LAC→3D" />
 
       <div className="laser-body">
-        <div className="laser-panel">
-          <List size="large" header="上传 .lac 并生成 3D 模型">
+        <div className="laser-panel lx-panel">
+          <div className="lx-eyebrow">
+            <span>上传 .lac 并生成 3D 模型</span>
+            <span className="lx-eyebrow-code">INPUT</span>
+          </div>
+          <List size="large">
             <List.Item key="upload">
               <div className="title">选择激光刀切文件</div>
               <div className="describe">
@@ -460,8 +458,11 @@ const LaserCut: React.FC = () => {
                   <div className="laser-plate-list">
                     {model.plates.map((p) => (
                       <div key={p.index} className="laser-plate-row">
-                        盘 {p.index}：{p.bbox.width.toFixed(0)} × {p.bbox.height.toFixed(0)} mm，
-                        {p.pieces.length + p.images.length} 件
+                        盘 {p.index}：
+                        <span className="lx-data">
+                          {p.bbox.width.toFixed(0)} × {p.bbox.height.toFixed(0)} mm
+                        </span>
+                        ，<span className="lx-data">{p.pieces.length + p.images.length}</span> 件
                       </div>
                     ))}
                   </div>
@@ -520,14 +521,16 @@ const LaserCut: React.FC = () => {
                     1.0 = 文件中的原始物理尺寸（单位 mm）。例如设为 0.5，则成品缩到一半（厚度也减半）。
                   </div>
                   <div className="describe">
-                    当前缩放后厚度 {(thickness * scale).toFixed(2)} mm。
+                    当前缩放后厚度 <span className="lx-data">{(thickness * scale).toFixed(2)} mm</span>。
                   </div>
                   {stats && stats.largestPart.maxEdge > 0 ? (
                     <div className="describe">
                       <strong>最大零件</strong>（决定能否放入打印幅面）：约{' '}
-                      {(stats.largestPart.x * scale).toFixed(1)} ×{' '}
-                      {(stats.largestPart.y * scale).toFixed(1)} mm，最大边{' '}
-                      {(stats.largestPart.maxEdge * scale).toFixed(1)} mm。
+                      <span className="lx-data">
+                        {(stats.largestPart.x * scale).toFixed(1)} ×{' '}
+                        {(stats.largestPart.y * scale).toFixed(1)} mm
+                      </span>
+                      ，最大边 <span className="lx-data">{(stats.largestPart.maxEdge * scale).toFixed(1)} mm</span>。
                     </div>
                   ) : null}
                   <InputNumber
@@ -620,7 +623,7 @@ const LaserCut: React.FC = () => {
                       你只需用比例系数整体放大或缩小。
                     </div>
                     {engraveInfo ? (
-                      <div className="describe laser-energy-box">
+                      <div className="describe laser-energy-box lx-data">
                         切割：功率 {engraveInfo.cutPower?.power ?? '—'} / 速度 {engraveInfo.cutPower?.speed ?? '—'}
                         （能量 {engraveInfo.cutEnergy ? engraveInfo.cutEnergy.toFixed(2) : '—'}，对应切穿全厚）
                         <br />
@@ -661,8 +664,10 @@ const LaserCut: React.FC = () => {
                           />
                           <span className="laser-param-hint">
                             放大/缩小由能量推算的深度。当前实际深度 ≈{' '}
-                            {engraveInfo ? engraveInfo.depthMm.toFixed(2) : '—'} mm
-                            （材料 {(thickness * scale).toFixed(2)} mm）。
+                            <span className="lx-data">
+                              {engraveInfo ? engraveInfo.depthMm.toFixed(2) : '—'} mm
+                            </span>
+                            （材料 <span className="lx-data">{(thickness * scale).toFixed(2)} mm</span>）。
                           </span>
                         </div>
                         <div className="laser-param">
@@ -680,7 +685,10 @@ const LaserCut: React.FC = () => {
                           />
                           <span className="laser-param-hint">
                             放大/缩小由能量推算的刻线宽度。当前实际宽度 ≈{' '}
-                            {engraveInfo ? engraveInfo.widthMm.toFixed(2) : '—'} mm。
+                            <span className="lx-data">
+                              {engraveInfo ? engraveInfo.widthMm.toFixed(2) : '—'} mm
+                            </span>
+                            。
                           </span>
                         </div>
                       </div>
@@ -722,23 +730,31 @@ const LaserCut: React.FC = () => {
                               {
                                 title: '功率',
                                 dataIndex: 'power',
-                                render: (v: number | null) => (v == null ? '—' : v),
+                                render: (v: number | null) => (
+                                  <span className="lx-data">{v == null ? '—' : v}</span>
+                                ),
                               },
                               {
                                 title: '速度',
                                 dataIndex: 'speed',
-                                render: (v: number | null) => (v == null ? '—' : v),
+                                render: (v: number | null) => (
+                                  <span className="lx-data">{v == null ? '—' : v}</span>
+                                ),
                               },
-                              { title: '路径数', dataIndex: 'count' },
+                              {
+                                title: '路径数',
+                                dataIndex: 'count',
+                                render: (v: number) => <span className="lx-data">{v}</span>,
+                              },
                               {
                                 title: '深度(mm)',
                                 dataIndex: 'depthMm',
-                                render: (v: number) => v.toFixed(2),
+                                render: (v: number) => <span className="lx-data">{v.toFixed(2)}</span>,
                               },
                               {
                                 title: '宽度(mm)',
                                 dataIndex: 'widthMm',
-                                render: (v: number) => v.toFixed(2),
+                                render: (v: number) => <span className="lx-data">{v.toFixed(2)}</span>,
                               },
                             ]}
                           />
@@ -756,7 +772,7 @@ const LaserCut: React.FC = () => {
                   <div className="describe">
                     导出 3MF（，可直接导入拓竹切片软件 打印。
                     导出的模型与左侧设置（厚度、缩放、孔洞、翻转）完全一致。当前视图三角面：
-                    {stats ? stats.triangles.toLocaleString() : '生成中…'}。
+                    <span className="lx-data">{stats ? stats.triangles.toLocaleString() : '生成中…'}</span>。
                   </div>
 
                   <Button
@@ -780,7 +796,7 @@ const LaserCut: React.FC = () => {
           </List>
         </div>
 
-        <div className="laser-viewer">
+        <div className="laser-viewer lx-viewport">
           {model ? (
             <div className="laser-view-toggle">
               <Button.Group>
@@ -801,6 +817,12 @@ const LaserCut: React.FC = () => {
               </Button.Group>
             </div>
           ) : null}
+          {model && stats && viewMode === '3d' ? (
+            <div className="laser-view-hud lx-viewport-hud">
+              {stats.size.x.toFixed(1)} × {stats.size.y.toFixed(1)} × {stats.size.z.toFixed(1)} mm ·{' '}
+              {stats.triangles.toLocaleString()} 三角面
+            </div>
+          ) : null}
           {viewMode === '2d' ? (
             model ? (
               <PathPreview
@@ -811,14 +833,14 @@ const LaserCut: React.FC = () => {
                 className="laser-canvas"
               />
             ) : (
-              <div className="laser-empty">上传 .lac 文件后在此预览平面路径</div>
+              <div className="laser-empty lx-empty">上传 .lac 文件后在此预览平面路径</div>
             )
           ) : (
             <Spin loading={building} tip="生成模型中…" className="laser-spin">
               {viewObject ? (
                 <ModelViewer object={viewObject} className="laser-canvas" />
               ) : (
-                <div className="laser-empty">上传 .lac 文件后在此预览 3D 模型</div>
+                <div className="laser-empty lx-empty">上传 .lac 文件后在此预览 3D 模型</div>
               )}
             </Spin>
           )}
