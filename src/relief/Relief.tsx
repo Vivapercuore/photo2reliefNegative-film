@@ -170,6 +170,19 @@ const Relief: React.FC = () => {
 
   // file upload → data URL + intrinsic size
   const onFile = useCallback((file: File) => {
+    // Drop the previous image's ref and view so the worker effect (which reads
+    // imgElRef.current) never runs against stale pixel data while the new image
+    // is still decoding. The effect re-runs via the natSize dependency once the
+    // new Image finishes loading.
+    imgElRef.current = null;
+    disposeView();
+    setViewObject(null);
+    setStats(null);
+    setPreviewUrl('');
+    setProgress(0);
+    setProgressInfo('');
+    setBuilding(false);
+
     setFileName(file.name);
     setCrop(NO_CROP); // 新图重置裁剪
     const reader = new FileReader();
@@ -184,7 +197,7 @@ const Relief: React.FC = () => {
       img.src = url;
     };
     reader.readAsDataURL(file);
-  }, []);
+  }, [disposeView]);
 
   // run the worker (debounced) whenever inputs change
   const runWorker = useMemo(
@@ -207,6 +220,27 @@ const Relief: React.FC = () => {
     []
   );
 
+  // Clear every piece of loaded state so the panel returns to its initial
+  // (no-image) state. Called when the user removes the uploaded image.
+  // Cancelling the debounced runWorker prevents a pending invocation (from a
+  // recent param tweak) from sending stale pixel data to the worker after the
+  // user has already removed the image.
+  const resetAll = useCallback(() => {
+    runWorker.cancel();
+    imgElRef.current = null;
+    setImageUrl('');
+    setFileName('');
+    setNatSize({ w: 0, h: 0 });
+    setCrop(NO_CROP);
+    setProgress(0);
+    setProgressInfo('');
+    setBuilding(false);
+    setPreviewUrl('');
+    setViewObject(null);
+    setStats(null);
+    disposeView();
+  }, [disposeView, runWorker]);
+
   // init worker once
   useEffect(() => {
     const worker = new Worker(new URL('./worker/relief.worker.ts', import.meta.url));
@@ -220,6 +254,10 @@ const Relief: React.FC = () => {
         setBuilding(false);
         Message.error(`生成失败：${msg.message}`);
       } else if (msg.type === 'done') {
+        // If the image was removed (or replaced) while the worker was still
+        // processing the previous one, discard the stale result — imgElRef is
+        // nulled by resetAll / onFile before the new image finishes loading.
+        if (!imgElRef.current) return;
         disposeView();
         const geom = new THREE.BufferGeometry();
         geom.setAttribute('position', new THREE.BufferAttribute(msg.positions, 3));
@@ -271,6 +309,7 @@ const Relief: React.FC = () => {
   }, [
     imageUrl,
     crop,
+    natSize,
     BaseDeep,
     LayerDeep,
     MaxLength,
@@ -387,6 +426,7 @@ const Relief: React.FC = () => {
               onChange={(list: any[]) => {
                 const f = list && list[list.length - 1];
                 if (f?.originFile) onFile(f.originFile);
+                else if (!list || !list.length) resetAll();
               }}
               tip="仅支持图片"
             />
