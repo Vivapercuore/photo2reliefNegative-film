@@ -1,0 +1,123 @@
+/* =============================================================================
+   LUMEN PageNav 共享顶栏（DESIGN.md §6）
+   高 48px、bg-0 半透明 + backdrop-blur、底部 1px 光谱发丝线（§4 预算 1）。
+   ============================================================================= */
+
+.lx-pagenav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: var(--lx-space-3);
+  height: 48px;
+  padding: 0 var(--lx-space-4);
+  background: rgba(5, 7, 13, 0.72); /* bg-0 半透明 */
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  /* 底部 1px 光谱发丝线（§4 预算 1）— 用伪元素承载渐变，避免影响布局盒 */
+}
+.lx-pagenav::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--lx-spectrum);
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+/* ---- 返回按钮 ------------------------------------------------------------- */
+.lx-pagenav-back.arco-btn.arco-btn-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--lx-text-2);
+  font-family: var(--lx-font-body);
+  font-weight: 400;
+  padding: 0 8px;
+}
+.lx-pagenav-back.arco-btn.arco-btn-text:hover {
+  color: var(--lx-cyan);
+  background-color: rgba(63, 216, 240, 0.08);
+}
+.lx-pagenav-back-arrow {
+  font-family: var(--lx-font-mono);
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* ---- 品牌菱形 glyph（CSS，无图片）：两枚旋转方块叠加体 -------------- */
+.lx-pagenav-glyph {
+  position: relative;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-left: 2px;
+}
+.lx-pagenav-glyph::before,
+.lx-pagenav-glyph::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+/* 外层：光谱描边菱形 */
+.lx-pagenav-glyph::before {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--lx-bg-0), var(--lx-bg-0)) padding-box,
+    var(--lx-spectrum) border-box;
+}
+/* 内层：cyan 实心小菱形（点亮的芯）*/
+.lx-pagenav-glyph::after {
+  inset: 4px;
+  background: var(--lx-cyan);
+  box-shadow: 0 0 6px rgba(63, 216, 240, 0.5);
+}
+
+/* ---- 标题 + 代码 ---------------------------------------------------------- */
+.lx-pagenav-title {
+  margin: 0;
+  font-family: var(--lx-font-display);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--lx-text-1);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.lx-pagenav-code {
+  margin-left: 8px;
+  font-family: var(--lx-font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  color: var(--lx-text-3);
+  vertical-align: 1px;
+}
+
+/* ---- 弹性占位 + 右侧操作区 ------------------------------------------------ */
+.lx-pagenav-spacer {
+  flex: 1 1 auto;
+}
+.lx-pagenav-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--lx-space-2);
+  flex: none;
+}
+
+/* ---- 窄屏微调 ------------------------------------------------------------- */
+@media (max-width: 560px) {
+  .lx-pagenav {
+    gap: var(--lx-space-2);
+    padding: 0 var(--lx-space-3);
+  }
+  .lx-pagenav-code {
+    display: none;
+  }
+}
