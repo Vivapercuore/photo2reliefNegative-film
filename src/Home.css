@@ -1,61 +1,342 @@
-.home-container {
-  padding: 8vmin 4vmin;
+/* =============================================================================
+   LUMEN «透光» — Home 门面页（DESIGN.md §8 Home）
+   全站 hero。品牌区 + 4 张「透光瓷板」卡片：
+   默认熄灯（冷、暗），hover 背光点亮（图标暖光辉光 + 顶部渗光 + 2px 上浮）。
+   一次性入场 stagger（.lx-rise + --lx-rise-delay）。
+   背景：固定、极淡、静态的冷光氛围 —— 无 JS 动画循环。
+   ============================================================================= */
+
+.home {
+  position: relative;
   min-height: 100vh;
   box-sizing: border-box;
+  padding: clamp(48px, 9vh, 96px) clamp(20px, 5vw, 56px) 64px;
+  overflow: hidden; /* 背景光晕不外溢滚动 */
 }
 
-.home-header {
-  margin-bottom: 6vmin;
-  text-align: center;
+/* ---- 背景氛围：一处极淡冷光穹顶 + 底部深空压暗（静态，无循环）--------- */
+.home::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      120% 60% at 50% -8%,
+      rgba(63, 216, 240, 0.06) 0%,
+      rgba(63, 216, 240, 0) 60%
+    ),
+    radial-gradient(
+      90% 50% at 50% 120%,
+      rgba(139, 124, 255, 0.05) 0%,
+      rgba(139, 124, 255, 0) 55%
+    );
 }
 
-.home-title {
-  color: var(--color-text-1);
-  font-size: 28px;
-  margin: 0 0 8px 0;
-}
-
-.home-subtitle {
-  color: var(--color-text-3);
-  font-size: 16px;
-  margin: 0;
-}
-
-.feature-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 24px;
-  max-width: 900px;
+.home-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 1080px;
   margin: 0 auto;
-  justify-content: center;
 }
 
-.feature-card {
+/* =============================================================================
+   品牌区 hero
+   ============================================================================= */
+.home-hero {
   text-align: center;
-  cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-  border-radius: 8px;
-  width: 280px;
+  margin-bottom: clamp(40px, 7vh, 72px);
 }
 
-.feature-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+/* 眉标：技术副题（mono，克制）*/
+.home-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--lx-font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--lx-text-3);
+  margin-bottom: 22px;
+}
+/* 眉标两侧发丝短线，中段一枚 cyan 点（像通电指示）*/
+.home-eyebrow::before,
+.home-eyebrow::after {
+  content: "";
+  width: 24px;
+  height: 1px;
+  background: linear-gradient(90deg, var(--lx-line) 0%, var(--lx-line-bright) 100%);
+}
+.home-eyebrow::after {
+  background: linear-gradient(90deg, var(--lx-line-bright) 0%, var(--lx-line) 100%);
 }
 
-.feature-icon {
-  font-size: 48px;
-  line-height: 1;
-}
-
-.feature-title {
-  margin: 12px 0 8px 0;
-  font-size: 16px;
-  color: var(--color-text-1);
-}
-
-.feature-desc {
-  color: var(--color-text-3);
-  font-size: 13px;
+/* 品牌名 */
+.home-brand {
   margin: 0;
+  font-family: var(--lx-font-display);
+  font-weight: 700;
+  font-size: clamp(30px, 5.4vw, 52px);
+  line-height: 1.08;
+  letter-spacing: -0.01em;
+  color: var(--lx-text-1);
+}
+/* 品牌名内的 hero 装饰下划线（§4 光谱预算 4：hero 标题下划线）*/
+.home-brand-mark {
+  position: relative;
+  display: inline-block;
+  padding-bottom: 6px;
+}
+.home-brand-mark::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--lx-spectrum);
+  /* 极淡辉光让下划线像一条通电的光缝 */
+  box-shadow: 0 0 12px rgba(139, 124, 255, 0.35);
+}
+
+/* 技术副题：PHOTO → MATTER（mono，弱）*/
+.home-tagline {
+  margin: 20px 0 0;
+  font-family: var(--lx-font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  letter-spacing: 0.06em;
+  color: var(--lx-text-2);
+}
+.home-tagline .home-tagline-arrow {
+  color: var(--lx-cyan);
+  padding: 0 6px;
+}
+.home-tagline .home-tagline-dim {
+  color: var(--lx-text-3);
+}
+
+/* =============================================================================
+   卡片栅格 —— 4 张「透光瓷板」
+   ============================================================================= */
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(16px, 2vw, 22px);
+}
+
+/* ---- 单张瓷板 ------------------------------------------------------------- */
+.home-plate {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: clamp(20px, 2.4vw, 28px);
+  min-height: 200px;
+  box-sizing: border-box;
+  cursor: pointer;
+  text-align: left;
+  /* 熄灯态：冷、暗的凹陷瓷面 */
+  background:
+    linear-gradient(180deg, var(--lx-bg-2) 0%, var(--lx-bg-1) 100%);
+  border: 1px solid var(--lx-line);
+  border-radius: var(--lx-radius-panel);
+  box-shadow: var(--lx-panel-shadow);
+  /* button 复位 */
+  color: inherit;
+  font: inherit;
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  outline: none;
+  transition:
+    transform var(--lx-dur-hover) var(--lx-ease),
+    border-color var(--lx-dur-hover) var(--lx-ease),
+    box-shadow var(--lx-dur-hover) var(--lx-ease);
+}
+
+/* 顶部渗光层（默认熄灭，hover 点亮）——「背光从瓷板顶部渗入」*/
+.home-plate::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--lx-dur-state) var(--lx-ease);
+  background:
+    /* 顶部暖背光渗入（点亮时才现）*/
+    linear-gradient(
+      180deg,
+      rgba(255, 217, 163, 0.14) 0%,
+      rgba(255, 217, 163, 0) 42%
+    );
+  /* 顶部 1px 亮边（通电的边缘导光）*/
+  box-shadow: inset 0 1px 0 rgba(255, 226, 186, 0.28);
+}
+
+/* hover / focus / 键盘聚焦：点亮背光 + 2px 上浮 */
+.home-plate:hover,
+.home-plate:focus-visible {
+  transform: translateY(-2px);
+  border-color: var(--lx-line-bright);
+  box-shadow:
+    var(--lx-panel-shadow),
+    var(--lx-backlight-glow);
+}
+.home-plate:hover::before,
+.home-plate:focus-visible::before {
+  opacity: 1;
+}
+/* 键盘焦点保留清晰可见的描边（叠加在点亮态之上）*/
+.home-plate:focus-visible {
+  outline: 1px solid var(--lx-cyan);
+  outline-offset: 2px;
+}
+
+/* ---- 瓷板头部：序号 + 变换标签 ------------------------------------------ */
+.home-plate-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.home-plate-index {
+  font-family: var(--lx-font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.12em;
+  color: var(--lx-text-3);
+  transition: color var(--lx-dur-state) var(--lx-ease);
+}
+.home-plate:hover .home-plate-index,
+.home-plate:focus-visible .home-plate-index {
+  color: var(--lx-backlight);
+}
+/* 变换标签：PHOTO → RELIEF 一类（mono，弱）——四工具皆为「照片→物质」的一种变换 */
+.home-plate-transform {
+  font-family: var(--lx-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--lx-text-3);
+  white-space: nowrap;
+}
+.home-plate-transform .home-plate-arrow {
+  color: var(--lx-text-2);
+  padding: 0 3px;
+}
+
+/* ---- 图标：熄灯态冷描边，hover 转暖光辉光 -------------------------------- */
+.home-plate-icon {
+  color: var(--lx-text-2);
+  line-height: 0;
+  transition: color var(--lx-dur-state) var(--lx-ease);
+}
+.home-plate-icon svg {
+  display: block;
+  filter: none;
+  transition: filter var(--lx-dur-state) var(--lx-ease);
+}
+/* 点亮：描边转暖背光色 + 辉光（§4 暖背光预算 1：卡片 hover 图标点亮）*/
+.home-plate:hover .home-plate-icon,
+.home-plate:focus-visible .home-plate-icon {
+  color: var(--lx-backlight);
+}
+.home-plate:hover .home-plate-icon svg,
+.home-plate:focus-visible .home-plate-icon svg {
+  filter: drop-shadow(0 0 8px rgba(255, 190, 110, 0.45));
+}
+
+/* ---- 文案 ---------------------------------------------------------------- */
+.home-plate-title {
+  margin: 0;
+  font-family: var(--lx-font-display);
+  font-weight: 600;
+  font-size: 17px;
+  line-height: 1.3;
+  color: var(--lx-text-1);
+}
+.home-plate-desc {
+  margin: 0;
+  font-family: var(--lx-font-body);
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--lx-text-2);
+}
+
+/* ---- 底部「进入」提示（熄灯弱，点亮亮）--------------------------------- */
+.home-plate-cta {
+  margin-top: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--lx-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--lx-text-3);
+  transition: color var(--lx-dur-state) var(--lx-ease);
+}
+.home-plate-cta-arrow {
+  transition: transform var(--lx-dur-hover) var(--lx-ease);
+}
+.home-plate:hover .home-plate-cta,
+.home-plate:focus-visible .home-plate-cta {
+  color: var(--lx-cyan);
+}
+.home-plate:hover .home-plate-cta-arrow,
+.home-plate:focus-visible .home-plate-cta-arrow {
+  transform: translateX(3px);
+}
+
+/* =============================================================================
+   页脚眉标（克制，收束整页）
+   ============================================================================= */
+.home-foot {
+  margin-top: clamp(40px, 6vh, 64px);
+  text-align: center;
+  font-family: var(--lx-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--lx-text-3);
+}
+
+/* =============================================================================
+   响应式
+   ============================================================================= */
+@media (max-width: 720px) {
+  .home-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 400px) {
+  .home {
+    padding: 40px 16px 48px;
+  }
+  .home-plate {
+    min-height: 0;
+    padding: 18px;
+  }
+  .home-tagline {
+    font-size: 12px;
+  }
+}
+
+/* =============================================================================
+   reduced-motion：去除上浮/位移，只保留点亮（tokens.css 已全局降级动画时长，
+   这里额外把 hover 位移与 CTA 箭头位移清零，保证「无位移」）
+   ============================================================================= */
+@media (prefers-reduced-motion: reduce) {
+  .home-plate:hover,
+  .home-plate:focus-visible {
+    transform: none;
+  }
+  .home-plate:hover .home-plate-cta-arrow,
+  .home-plate:focus-visible .home-plate-cta-arrow {
+    transform: none;
+  }
 }

@@ -4,6 +4,8 @@
   "private": true,
   "dependencies": {
     "@arco-design/web-react": "^2.66.1",
+    "@fontsource/jetbrains-mono": "^5.2.8",
+    "@fontsource/space-grotesk": "^5.2.10",
     "@testing-library/dom": "^10.2.0",
     "@testing-library/jest-dom": "^5.17.0",
     "@testing-library/react": "^13.4.0",
