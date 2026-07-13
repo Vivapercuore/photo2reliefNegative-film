@@ -1,0 +1,217 @@
+/* ---- Crop editor ---- */
+.crop-editor {
+  width: 100%;
+}
+.crop-ratios {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.crop-ratio {
+  border: 1px solid var(--lx-line);
+  background: var(--lx-bg-1);
+  color: var(--lx-text-2);
+  border-radius: var(--lx-radius-control);
+  padding: 2px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  line-height: 20px;
+  transition: border-color var(--lx-dur-hover) var(--lx-ease),
+    color var(--lx-dur-hover) var(--lx-ease), background var(--lx-dur-hover) var(--lx-ease);
+}
+.crop-ratio:hover {
+  border-color: var(--lx-line-bright);
+  color: var(--lx-text-1);
+}
+.crop-ratio.active {
+  border-color: var(--lx-cyan);
+  color: var(--lx-cyan);
+  background: rgba(63, 216, 240, 0.1);
+}
+.crop-readout {
+  margin-left: auto;
+  font-family: var(--lx-font-mono);
+  font-size: 12px;
+  color: var(--lx-text-3);
+  font-variant-numeric: tabular-nums;
+}
+.crop-size {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--lx-text-2);
+}
+.crop-size-label {
+  color: var(--lx-text-3);
+  margin-right: 2px;
+}
+.crop-size-input {
+  width: 64px;
+  height: 26px;
+  border: 1px solid var(--lx-line);
+  border-radius: var(--lx-radius-control);
+  background: var(--lx-bg-1);
+  color: var(--lx-text-1);
+  padding: 0 8px;
+  font-family: var(--lx-font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  transition: border-color var(--lx-dur-hover) var(--lx-ease);
+}
+.crop-size-input:focus {
+  outline: none;
+  border-color: var(--lx-cyan);
+}
+
+.crop-stage {
+  position: relative;
+  width: 100%;
+  line-height: 0;
+  user-select: none;
+  touch-action: none;
+  overflow: hidden;
+  border-radius: var(--lx-radius-control);
+  background: var(--lx-bg-1);
+  border: 1px solid var(--lx-line);
+}
+.crop-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+}
+.crop-box {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid var(--lx-line-bright);
+  box-shadow: 0 0 0 100vmax rgba(5, 7, 13, 0.6);
+  cursor: move;
+  touch-action: none;
+  transition: border-color var(--lx-dur-hover) var(--lx-ease);
+}
+.crop-box:active {
+  border-color: var(--lx-cyan);
+}
+.crop-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(var(--lx-line-bright) 1px, transparent 1px),
+    linear-gradient(var(--lx-line-bright) 1px, transparent 1px),
+    linear-gradient(90deg, var(--lx-line-bright) 1px, transparent 1px),
+    linear-gradient(90deg, var(--lx-line-bright) 1px, transparent 1px);
+  background-position: 0 33.33%, 0 66.66%, 33.33% 0, 66.66% 0;
+  background-size: 100% 1px, 100% 1px, 1px 100%, 1px 100%;
+  background-repeat: no-repeat;
+  opacity: 0.7;
+}
+.crop-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: var(--lx-text-1);
+  border: 1px solid var(--lx-bg-0);
+  border-radius: var(--lx-radius-tag);
+  touch-action: none;
+  transition: background var(--lx-dur-hover) var(--lx-ease);
+}
+.crop-handle:hover,
+.crop-handle:active {
+  background: var(--lx-cyan);
+}
+/* corners */
+.crop-nw { left: -6px; top: -6px; cursor: nwse-resize; }
+.crop-ne { right: -6px; top: -6px; cursor: nesw-resize; }
+.crop-sw { left: -6px; bottom: -6px; cursor: nesw-resize; }
+.crop-se { right: -6px; bottom: -6px; cursor: nwse-resize; }
+/* edges */
+.crop-n { left: 50%; top: -6px; transform: translateX(-50%); cursor: ns-resize; }
+.crop-s { left: 50%; bottom: -6px; transform: translateX(-50%); cursor: ns-resize; }
+.crop-w { top: 50%; left: -6px; transform: translateY(-50%); cursor: ew-resize; }
+.crop-e { top: 50%; right: -6px; transform: translateY(-50%); cursor: ew-resize; }
+
+/* ---- Colour editor ---- */
+.color-editor {
+  width: 100%;
+}
+.ce-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ce-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ---- gradient preview slider (DESIGN.md §3/§7 滑杆规范：2px 轨道 + 12px 方形手柄) --- */
+.gs {
+  flex: 1;
+  padding: 0 6px; /* room so the thumb doesn't clip at the ends */
+}
+.gs-rail {
+  position: relative;
+  height: 2px;
+  border-radius: 1px;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  cursor: pointer;
+  touch-action: none;
+  outline: none;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+.gs-rail:focus-visible {
+  outline: 1px solid var(--lx-cyan);
+  outline-offset: 4px;
+}
+.gs-thumb {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: var(--lx-radius-tag);
+  background: var(--lx-text-1);
+  border: 1px solid var(--lx-bg-0);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  transition: background var(--lx-dur-hover) var(--lx-ease);
+}
+.gs-rail:hover .gs-thumb,
+.gs-rail:focus-visible .gs-thumb {
+  background: var(--lx-cyan);
+}
+.ce-label {
+  width: 48px;
+  flex: none;
+  font-size: 13px;
+  color: var(--lx-text-2);
+}
+.ce-val {
+  width: 44px;
+  flex: none;
+  text-align: right;
+  font-size: 12px;
+  color: var(--lx-text-3);
+}
+.ce-divider {
+  height: 1px;
+  background: var(--lx-line);
+  margin: 10px 0;
+}
+.ce-prim-head.lx-eyebrow {
+  justify-content: flex-start;
+  margin: 6px 0 2px;
+}
+.ce-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--lx-radius-tag);
+  outline: 1px solid var(--lx-line-bright);
+}
