@@ -54,8 +54,8 @@ function bitmapToImageData(bitmap: ImageBitmap, maxLength: number, quality: numb
   const w = bitmap.width;
   const h = bitmap.height;
   const zoom = w >= h ? maxLength / w : maxLength / h;
-  const finalW = Math.max(2, Math.round(zoom * w * quality));
-  const finalH = Math.max(2, Math.round(zoom * h * quality));
+  const finalW = Math.max(2, Math.round(zoom * w * quality) + 1);
+  const finalH = Math.max(2, Math.round(zoom * h * quality) + 1);
   const canvas = new OffscreenCanvas(finalW, finalH);
   const ctx = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D | null;
   if (!ctx) throw new Error('无法创建 OffscreenCanvas 2D 上下文');
