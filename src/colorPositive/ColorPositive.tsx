@@ -122,6 +122,10 @@ const ColorPositive: React.FC = () => {
   );
   const printRef = useRef(print);
   printRef.current = print;
+  const maxLengthRef = useRef(maxLength);
+  maxLengthRef.current = maxLength;
+  const qualityRef = useRef(quality);
+  qualityRef.current = quality;
 
   const zTable = useMemo(() => (bands ? bandZTable(bands, print) : []), [bands, print]);
   const totalLayerCount = useMemo(
@@ -237,7 +241,6 @@ const ColorPositive: React.FC = () => {
       if (msg.bands) {
         setBands(msg.bands);
         setCustomized(false);
-        builtKeyRef.current = makeGeomKey(msg.bands, printRef.current);
       }
       if (msg.counts) setCounts(msg.counts);
       if (msg.preview && msg.previewWidth && msg.previewHeight) {
@@ -250,11 +253,13 @@ const ColorPositive: React.FC = () => {
       if (geomRef.current) geomRef.current.dispose();
       geomRef.current = geom;
       if (!materialRef.current) materialRef.current = createBandMaterial();
-      const zt = bandZTable(nextBands, printRef.current);
+      // 用回显配置（本次网格实际构建时所用）算色带高度，而非实时 state——
+      // 避免用户在防抖/计算期间改了层高/底板时，材质与几何脱节
+      const zt = bandZTable(msg.config.bands, msg.config.print);
       updateBandMaterial(
         materialRef.current,
         zt.map((z) => z.zTop),
-        nextBands.map((b) => b.color)
+        msg.config.bands.map((b) => b.color)
       );
       if (!meshRef.current) {
         const mesh = new THREE.Mesh(geom, materialRef.current);
@@ -268,13 +273,32 @@ const ColorPositive: React.FC = () => {
       setRevision((r) => r + 1);
       setStats({ triangles: msg.triangles, size: msg.size });
       setBuilding(false);
+      // 以回显配置为准登记已建几何；若用户在途中改了顺序/层数/层高/底板，
+      // 回显键与实时键不一致 —— 立即补发一次几何重建，保证最终一致
+      builtKeyRef.current = makeGeomKey(msg.config.bands, msg.config.print);
+      const liveBands = msg.bands ?? bandsRef.current;
+      if (liveBands) {
+        const liveKey = makeGeomKey(liveBands, printRef.current);
+        if (liveKey !== builtKeyRef.current) {
+          builtKeyRef.current = liveKey;
+          runGeometry({
+            type: 'geometry',
+            config: {
+              maxLength: maxLengthRef.current,
+              quality: qualityRef.current,
+              bands: liveBands,
+              print: printRef.current,
+            },
+          });
+        }
+      }
     };
     return () => {
       worker.terminate();
       workerRef.current = null;
       disposeView();
     };
-  }, [disposeView, renderPreview]);
+  }, [disposeView, renderPreview, runGeometry]);
 
   // 量化触发：图/裁剪/尺寸/精细度/颜色数/手动重提 变化 → 全量重算
   // （色板颜色编辑不走这里——onBandColor 里显式 kickQuantize，避免 effect 回环）
@@ -345,6 +369,8 @@ const ColorPositive: React.FC = () => {
   // —— 上传 / 重置 ——
   const onFile = useCallback(
     (file: File) => {
+      runQuantize.cancel();
+      runGeometry.cancel();
       imgElRef.current = null;
       disposeView();
       setViewObject(null);
@@ -372,7 +398,7 @@ const ColorPositive: React.FC = () => {
       };
       reader.readAsDataURL(file);
     },
-    [customized, disposeView]
+    [customized, disposeView, runGeometry, runQuantize]
   );
 
   const resetAll = useCallback(() => {

@@ -46,6 +46,8 @@ export interface ColorDone {
   positions: Float32Array;
   size: { x: number; y: number; z: number };
   triangles: number;
+  /** 构建本次几何所用的有效配置（quantize 通道为解析后的 bands） */
+  config: ColorConfig;
   /** 以下仅量化通道返回 */
   bands?: Band[];
   counts?: number[];
@@ -96,7 +98,7 @@ self.onmessage = (e: MessageEvent<ColorRequest>) => {
       progress(40, '重建几何');
       const g = buildGeometry(e.data.config)!;
       progress(100, '完成');
-      post({ type: 'done', ...g }, [g.positions.buffer]);
+      post({ type: 'done', ...g, config: e.data.config }, [g.positions.buffer]);
       return;
     }
 
@@ -133,13 +135,15 @@ self.onmessage = (e: MessageEvent<ColorRequest>) => {
     }
 
     progress(85, '构建网格');
-    const g = buildGeometry({ ...config, bands })!;
+    const effective: ColorConfig = { ...config, bands };
+    const g = buildGeometry(effective)!;
 
     progress(100, '完成');
     post(
       {
         type: 'done',
         ...g,
+        config: effective,
         bands: autoExtract ? bands : undefined,
         counts,
         preview,
