@@ -1,0 +1,86 @@
+/* 色带图例编辑器：行序 = 模型高度（上=顶）。方角小控件，符合 LUMEN 工程感。 */
+.cp-bands {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cp-band {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--lx-bg-1);
+  border: 1px solid var(--lx-line);
+  border-radius: 4px;
+  cursor: grab;
+}
+
+.cp-band-dragging {
+  opacity: 0.45;
+}
+
+.cp-band-over {
+  border-color: var(--lx-cyan);
+}
+
+.cp-band-grip {
+  color: var(--lx-text-3);
+  font-size: 12px;
+  letter-spacing: -2px;
+  user-select: none;
+}
+
+.cp-band-swatch {
+  width: 28px;
+  height: 20px;
+  border-radius: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+  padding: 0;
+  flex: none;
+}
+
+/* 原生取色器触发器：隐藏但保持可聚焦（由色块代理点击） */
+.cp-band-color-input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cp-band-hex {
+  width: 68px;
+  font-size: 12px;
+  color: var(--lx-text-2);
+}
+
+.cp-band-pct {
+  width: 48px;
+  font-size: 12px;
+  color: var(--lx-text-3);
+  text-align: right;
+}
+
+.cp-band-layers {
+  flex: none;
+}
+
+.cp-band-z {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--lx-text-2);
+  white-space: nowrap;
+}
+
+.cp-band-z-unit {
+  color: var(--lx-text-3);
+  margin-left: 2px;
+}
+
+.cp-bands-hint {
+  font-size: 12px;
+  color: var(--lx-text-3);
+  margin-top: 2px;
+}
