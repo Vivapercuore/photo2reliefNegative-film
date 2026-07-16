@@ -1,0 +1,5 @@
+{
+  // 仅供裸 `npx jest` 使用：.claude 工作树路径含点目录，react-scripts test 无法发现测试。
+  // CRA 的 webpack/babel-jest 均设 babelrc:false，本文件对 npm start/build/test 完全惰性。
+  "presets": ["react-app"]
+}

@@ -1,5 +1,6 @@
 /* eslint-disable no-restricted-globals */
 import type { Config, DeepMap } from '../../dataProcess/type';
+import { bitmapToImageData } from '../../dataProcess/bitmapToImageData';
 import {
   transImageDataList2Map,
   getLightArray,
@@ -44,24 +45,6 @@ const post = (msg: ReliefResponse, transfer?: Transferable[]) =>
 
 const progress = (percent: number, info: string) =>
   post({ type: 'progress', percent, info });
-
-/**
- * Decode an ImageBitmap into scaled ImageData using OffscreenCanvas, matching
- * the legacy getImageRGBList sizing: final = zoom*side*Quality + Quality, where
- * zoom fits the longest edge to MaxLength.
- */
-function bitmapToImageData(bitmap: ImageBitmap, maxLength: number, quality: number): ImageData {
-  const w = bitmap.width;
-  const h = bitmap.height;
-  const zoom = w >= h ? maxLength / w : maxLength / h;
-  const finalW = Math.max(2, Math.round(zoom * w * quality) + 1);
-  const finalH = Math.max(2, Math.round(zoom * h * quality) + 1);
-  const canvas = new OffscreenCanvas(finalW, finalH);
-  const ctx = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D | null;
-  if (!ctx) throw new Error('无法创建 OffscreenCanvas 2D 上下文');
-  ctx.drawImage(bitmap, 0, 0, w, h, 0, 0, finalW, finalH);
-  return ctx.getImageData(0, 0, finalW, finalH);
-}
 
 self.onmessage = (e: MessageEvent<ReliefRequest>) => {
   const { bitmap, config } = e.data;

@@ -77,6 +77,33 @@ const ReliefIcon: React.FC = () => (
   </svg>
 );
 
+/**
+ * Colour-positive icon: a stepped terrace pyramid — each level is one colour
+ * band (height encodes colour) — with a filament droplet marking the colour
+ * change. Line-art (currentColor) so the parent can ignite it on hover.
+ */
+const ColorPositiveIcon: React.FC = () => (
+  <svg
+    width="44"
+    height="44"
+    viewBox="0 0 48 48"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    {/* stepped colour terraces (height encodes colour) */}
+    <rect x="6" y="34" width="36" height="8" rx="2" />
+    <rect x="11" y="26" width="26" height="8" rx="2" opacity="0.9" />
+    <rect x="16" y="18" width="16" height="8" rx="2" opacity="0.9" />
+    <rect x="21" y="10" width="6" height="8" rx="2" opacity="0.9" />
+    {/* filament-change droplet */}
+    <path d="M38 10 c2 2.8 3.2 4.5 3.2 6 a3.2 3.2 0 1 1 -6.4 0 c0 -1.5 1.2 -3.2 3.2 -6 z" opacity="0.85" />
+  </svg>
+);
+
 const features: FeatureItem[] = [
   {
     title: '照片转浮雕负片',
@@ -91,6 +118,14 @@ const features: FeatureItem[] = [
     path: '/lac2model',
     transform: 'LAC → 3D',
     icon: <LaserCutIcon />,
+  },
+  {
+    title: '照片转多色正片',
+    description:
+      '上传图片，量化为 n 个纯色并生成分层换色的一体化 3D 模型，导出 3MF 直接打印，支持 AMS 自动换色或暂停手动换料。',
+    path: '/photo2color',
+    transform: 'COLOR',
+    icon: <ColorPositiveIcon />,
   },
 ];
 
