@@ -1,0 +1,123 @@
+.cp {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.cp-body {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+}
+
+.cp-panel {
+  width: 460px;
+  max-width: 46%;
+  overflow-y: auto;
+  padding: var(--lx-space-4);
+  box-sizing: border-box;
+  border-right: 1px solid var(--lx-line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--lx-space-4);
+}
+
+.cp-section > .lx-eyebrow {
+  margin-bottom: var(--lx-space-3);
+}
+
+.cp-viewer {
+  flex: 1 1 auto;
+  position: relative;
+  min-width: 0;
+}
+
+.cp-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.cp-hud {
+  right: var(--lx-space-4);
+  bottom: var(--lx-space-3);
+}
+
+/* 视口左下角的量化 2D 预览缩略图（与 3D 模型对照） */
+.cp-thumb {
+  position: absolute;
+  left: var(--lx-space-4);
+  bottom: var(--lx-space-3);
+  width: 160px;
+  max-height: 160px;
+  object-fit: contain;
+  border: 1px solid var(--lx-line);
+  border-radius: 4px;
+  background: var(--lx-bg-1);
+  image-rendering: pixelated;
+  opacity: 0.95;
+  pointer-events: none;
+}
+
+.cp-empty {
+  width: 100%;
+  height: 100%;
+}
+.cp-empty-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--lx-text-2);
+}
+.cp-empty-hint {
+  font-size: 13px;
+  color: var(--lx-text-3);
+}
+
+.cp-field-label {
+  font-weight: 600;
+  color: var(--lx-text-1);
+  margin-bottom: 4px;
+}
+
+.cp .describe {
+  color: var(--lx-text-3);
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.cp-readout {
+  color: var(--lx-text-2);
+}
+
+.cp-warn {
+  color: var(--lx-warn);
+}
+
+.cp-size-tag {
+  margin: 4px;
+  cursor: pointer;
+}
+
+.cp-palette-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 900px) {
+  .cp-body {
+    flex-direction: column;
+  }
+  .cp-panel {
+    width: 100%;
+    max-width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--lx-line);
+  }
+  .cp-viewer {
+    min-height: 360px;
+  }
+}
