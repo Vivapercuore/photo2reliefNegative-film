@@ -55,6 +55,36 @@ describe('extractPalette', () => {
     const data = rgba([{ c: [50, 50, 50], count: 100 }]);
     expect(extractPalette(data, 4)).toHaveLength(4);
   });
+
+  it('四个等面积纯色提取出恰好这四色（不并色、不拆近似白）', () => {
+    const data = rgba([
+      { c: [26, 34, 56], count: 250 },    // 海军蓝 #1A2238
+      { c: [192, 57, 43], count: 250 },   // 红 #C0392B
+      { c: [230, 126, 34], count: 250 },  // 橙 #E67E22
+      { c: [245, 240, 232], count: 250 }, // 米白 #F5F0E8
+    ]);
+    expect(extractPalette(data, 4)).toEqual(['#1A2238', '#C0392B', '#E67E22', '#F5F0E8']);
+  });
+
+  it('少量反走样边缘混色像素不应诱使按跨度选盒把海军蓝和红并成一色', () => {
+    // 复现真实图片场景：四块纯色之间有极少量边界反走样像素（颜色介于
+    // 白和深色之间），这些离群像素会把"米白"盒子的通道跨度撑得很大，
+    // 但因为数量少，它对误差平方和(SSE)贡献很小——真正该切分的是像素
+    // 数量对半、颜色差异巨大的海军蓝+红盒子。按跨度选盒的旧实现会被
+    // 这几个离群像素误导，反复去切米白盒子，导致海军蓝和红始终并在一起。
+    const data = rgba([
+      { c: [26, 34, 56], count: 250 },    // 海军蓝
+      { c: [192, 57, 43], count: 250 },   // 红
+      { c: [230, 126, 34], count: 248 },  // 橙
+      { c: [245, 240, 232], count: 248 }, // 米白
+      { c: [70, 65, 80], count: 2 },      // 海军蓝<->米白 边缘混色（离群，跨度大）
+      { c: [110, 90, 90], count: 2 },     // 红<->米白 边缘混色（离群，跨度大）
+    ]);
+    const pal = extractPalette(data, 4);
+    expect(pal).toHaveLength(4);
+    expect(new Set(pal).size).toBe(4); // 四色互不相同：海军蓝和红没有被并色
+    expect(pal).toEqual(['#1A2238', '#BE392C', '#E67D22', '#F5EFE6']);
+  });
 });
 
 describe('quantizeToLabels', () => {

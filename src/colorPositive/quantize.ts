@@ -34,6 +34,10 @@ function overWhite(data: Uint8ClampedArray, o: number): [number, number, number]
 
 /**
  * median-cut 提取 n 色，返回按亮度暗→亮排序的 hex 数组（长度恰为 n）。
+ * 选盒准则是「误差平方和最大」（而非通道跨度最大）：跨度对个别离群像素
+ * （如反走样边缘的混色像素）很敏感，会让本该合并的大块纯色盒子（如两个
+ * 等面积但颜色不同的区域）迟迟排不上切分；误差平方和按像素数加权，能正
+ * 确识别出「真正该切」的盒子。切分轴仍取盒子自身最宽的通道，切点仍是中位数。
  * 确定性：无随机初始化；并列时按固定顺序取第一个。图片唯一色少于 n 时
  * 重复末尾颜色补齐（重复色不会分到像素——quantizeToLabels 用严格小于）。
  */
@@ -55,16 +59,33 @@ export function extractPalette(data: Uint8ClampedArray, n: number): string[] {
   }
   const boxes: Box[] = [{ idx: all }];
 
-  /** 一个盒子的最宽通道及其跨度 */
-  const widest = (box: Box): { chan: number; span: number } => {
+  /** 一个盒子的统计量：最宽通道(切分轴)、跨度、以及到均值的误差平方和(选盒准则) */
+  const boxStats = (box: Box): { chan: number; span: number; sse: number } => {
     const mins = [255, 255, 255];
     const maxs = [0, 0, 0];
+    let mr = 0;
+    let mg = 0;
+    let mb = 0;
     for (const i of box.idx) {
+      mr += px[i * 3];
+      mg += px[i * 3 + 1];
+      mb += px[i * 3 + 2];
       for (let c = 0; c < 3; c++) {
         const v = px[i * 3 + c];
         if (v < mins[c]) mins[c] = v;
         if (v > maxs[c]) maxs[c] = v;
       }
+    }
+    const k = box.idx.length || 1;
+    mr /= k;
+    mg /= k;
+    mb /= k;
+    let sse = 0;
+    for (const i of box.idx) {
+      const dr = px[i * 3] - mr;
+      const dg = px[i * 3 + 1] - mg;
+      const db = px[i * 3 + 2] - mb;
+      sse += dr * dr + dg * dg + db * db;
     }
     let chan = 0;
     let span = -1;
@@ -75,19 +96,20 @@ export function extractPalette(data: Uint8ClampedArray, n: number): string[] {
         chan = c;
       }
     }
-    return { chan, span };
+    return { chan, span, sse };
   };
 
   while (boxes.length < n) {
-    // 选跨度最大的盒子沿其最宽通道在中位数处切分（确定性：取第一个最大者）
+    // 选误差平方和最大的盒子，沿其最宽通道在中位数处切分（确定性：取第一个最大者）
     let bi = -1;
-    let bSpan = 0;
+    let bSse = 0;
     let bChan = 0;
     for (let i = 0; i < boxes.length; i++) {
       if (boxes[i].idx.length < 2) continue;
-      const { chan, span } = widest(boxes[i]);
-      if (span > bSpan) {
-        bSpan = span;
+      const { chan, span, sse } = boxStats(boxes[i]);
+      if (span === 0) continue; // 颜色完全相同的盒子不可再分
+      if (sse > bSse) {
+        bSse = sse;
         bi = i;
         bChan = chan;
       }
