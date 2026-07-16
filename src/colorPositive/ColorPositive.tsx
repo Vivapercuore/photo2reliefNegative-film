@@ -35,7 +35,7 @@ import {
   MAX_COLORS,
 } from './bands';
 import { createBandMaterial, updateBandMaterial } from './heightShader';
-import type { QuantizeRequest, GeometryRequest, ColorResponse } from './worker/color.worker';
+import type { QuantizeRequest, GeometryRequest, ColorResponse, ColorConfig } from './worker/color.worker';
 import PaletteBands from './PaletteBands';
 
 const RadioGroup = Radio.Group;
@@ -115,6 +115,8 @@ const ColorPositive: React.FC = () => {
   const materialRef = useRef<THREE.ShaderMaterial | null>(null);
   /** 最近一次已发给 worker 的几何键（防止量化通道刚建完几何又被几何 effect 重复重建） */
   const builtKeyRef = useRef('');
+  /** 最近一次实际构建出 geomRef.current 所用的配置（导出必须以此为准，而非实时 state） */
+  const builtConfigRef = useRef<ColorConfig | null>(null);
 
   const print: PrintParams = useMemo(
     () => ({ layerHeight, firstLayerHeight: FIRST_LAYER_HEIGHT, baseLayers }),
@@ -275,6 +277,7 @@ const ColorPositive: React.FC = () => {
       setBuilding(false);
       // 以回显配置为准登记已建几何；若用户在途中改了顺序/层数/层高/底板，
       // 回显键与实时键不一致 —— 立即补发一次几何重建，保证最终一致
+      builtConfigRef.current = msg.config;
       builtKeyRef.current = makeGeomKey(msg.config.bands, msg.config.print);
       const liveBands = msg.bands ?? bandsRef.current;
       if (liveBands) {
@@ -381,6 +384,7 @@ const ColorPositive: React.FC = () => {
       setBuilding(false);
       setCounts(null);
       builtKeyRef.current = '';
+      builtConfigRef.current = null;
       if (!customized) setBands(null); // 自定义色板跨图保留；自动色板换图重提
 
       setFileName(file.name);
@@ -404,6 +408,7 @@ const ColorPositive: React.FC = () => {
   const resetAll = useCallback(() => {
     runQuantize.cancel();
     runGeometry.cancel();
+    workerRef.current?.postMessage({ type: 'reset' });
     imgElRef.current = null;
     setImageUrl('');
     setFileName('');
@@ -419,27 +424,28 @@ const ColorPositive: React.FC = () => {
     setViewObject(null);
     setStats(null);
     builtKeyRef.current = '';
+    builtConfigRef.current = null;
     disposeView();
   }, [disposeView, runGeometry, runQuantize]);
 
   // —— 导出 ——
   const onExport3mf = useCallback(async () => {
     const geom = geomRef.current;
-    const b = bandsRef.current;
-    if (!geom || !b || !b.length) {
+    const built = builtConfigRef.current;
+    if (!geom || !built || !built.bands.length) {
       Message.warning('请先上传图片并生成模型');
       return;
     }
     setExporting(true);
     try {
-      const options: Pack3mfOptions = buildExportOptions(b, printRef.current, changeMode);
+      const options: Pack3mfOptions = buildExportOptions(built.bands, built.print, changeMode);
       try {
         if (quantPreviewUrl) options.thumbnails = await makeThumbnails(quantPreviewUrl);
       } catch {
         // 缩略图失败不阻断导出
       }
       const u8 = await pack3mf('color', [{ name: 'color-positive', geometry: geom }], undefined, options);
-      const fname = `${safeBaseName(fileName)}-${b.length}色-${
+      const fname = `${safeBaseName(fileName)}-${built.bands.length}色-${
         changeMode === 'ams' ? 'AMS换色' : '暂停换料'
       }.3mf`;
       saveBlob(u8, fname);

@@ -28,7 +28,12 @@ export interface GeometryRequest {
   config: ColorConfig;
 }
 
-export type ColorRequest = QuantizeRequest | GeometryRequest;
+/** 清空量化缓存（删除图片时主线程发送）。 */
+export interface ResetRequest {
+  type: 'reset';
+}
+
+export type ColorRequest = QuantizeRequest | GeometryRequest | ResetRequest;
 
 export interface ColorProgress {
   type: 'progress';
@@ -93,8 +98,16 @@ function buildGeometry(config: ColorConfig): {
 
 self.onmessage = (e: MessageEvent<ColorRequest>) => {
   try {
+    if (e.data.type === 'reset') {
+      cache = null;
+      return;
+    }
+
     if (e.data.type === 'geometry') {
-      if (!cache) return; // 图已移除或 worker 重建：静默忽略（主线程有守卫）
+      if (!cache) {
+        post({ type: 'error', message: '标签图缓存不存在，请重新上传图片' });
+        return;
+      }
       progress(40, '重建几何');
       const g = buildGeometry(e.data.config)!;
       progress(100, '完成');

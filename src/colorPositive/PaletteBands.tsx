@@ -88,6 +88,7 @@ const PaletteBands: React.FC<Props> = ({
               }}
               className="cp-band-color-input"
               type="color"
+              tabIndex={-1}
               value={band.color}
               onChange={(e) => onColorChange(band.label, e.target.value.toUpperCase())}
             />
